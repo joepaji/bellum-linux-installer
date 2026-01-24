@@ -3,7 +3,8 @@
 WORKDIR=$(pwd)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if ! source "${SCRIPT_DIR}/utils.sh"; then
+UTILS_DIR="${SCRIPT_DIR}/utils"
+if ! source "${UTILS_DIR}/utils.sh"; then
     command echo "ERROR: Failed to load utils.sh"
     exit 1
 fi
@@ -73,7 +74,7 @@ ${COLOR_RESET}"
 #======================================#
 #  Source and execute precheck script  #
 #======================================#
-source "$(dirname "$0")/precheck.sh"
+source "${UTILS_DIR}/precheck.sh"
 if [ $? -ne 0 ]; then
     exit 1
 fi
@@ -117,6 +118,7 @@ install_vkd3d() {
     fi
 
     rm -rf "$tmp_dir"
+    cleanup_packages_tmp_root "$archive"
     log info "✓ VKD3D installed"
 }
 
@@ -156,6 +158,7 @@ install_dxvk() {
     fi
 
     rm -rf "$tmp_dir"
+    cleanup_packages_tmp_root "$archive"
     log info "✓ DXVK installed"
 }
 
@@ -193,7 +196,7 @@ run_installer() {
     log info "Visual Studio C++ Redistributable (vcrun2022) install may pop up a GUI window; please follow the prompts."
     run_command true "$winetricks" vcrun2022
     if [ $? -ne 0 ]; then
-        log error "vcrun2022 installation failed."
+        log error "Wine packages failed install."
         return 1
     fi
     
@@ -217,6 +220,9 @@ run_installer() {
         return 1
     fi
 
+    log info "Astarte Launcher install completed successfully! Few more steps to go..."
+    log warn "I'm not done! Don't launch game or close this script just yet"
+
     if ! install_dxvk; then
         return 1
     fi
@@ -225,8 +231,84 @@ run_installer() {
         return 1
     fi
 
-
     cleanup_launcher_installer
+
+    print_lutris_instructions
+}
+
+#======================================#
+#        Lutris Configuration          #
+#======================================#
+print_lutris_instructions() {
+    local launcher_exe="${WINEPREFIX}/drive_c/users/steamuser/AppData/Local/Astarte Industries/Astarte Launcher/AstarteLauncher.exe"
+    local profile_file="${WORKDIR}/lutris_profile.txt"
+
+    cat > "$profile_file" <<EOF
+[Game Info Tab]
+Name: Bellum
+Runner: Wine
+
+[Game Options Tab]
+Executable: ${launcher_exe}
+Wine Prefix: ${WINEPREFIX}
+Prefix architecture: 64 bit
+
+[Runner Options Tab]
+Wine Version: System (11.0)
+Enable DXVK: Toggle On
+DXVK Version: Manual
+Enable VKD3D: Toggle On
+VKD3D Version: Manual
+Enable D3D Extras: Toggle On
+D3D Extras Version: v2 (default)
+Enable DXVK-NVAPI / DLSS: Toggle On
+DXVK NVAPI Version: v0.9.0 (default)
+
+[System Options]
+Disable Lutris Runtime: Toggle On
+Prefer System Libraries: Toggle On
+
+Enable Gamemode: On (unless you use falcond)
+
+Notes:
+- Gamemode is optional but highly recommended.
+- Settings not mentioned here can be left default or customized at will.
+EOF
+
+    echo
+    log info "Add the game to Lutris with the following configuration:"
+    echo "${COLOR_BOLD_CYAN}[Game Info Tab]${COLOR_RESET}"
+    echo "Name: ${COLOR_BOLD}Bellum${COLOR_RESET}"
+    echo "Runner: ${COLOR_BOLD}Wine${COLOR_RESET}"
+    echo
+    echo "${COLOR_BOLD_CYAN}[Game Options Tab]${COLOR_RESET}"
+    echo "Executable: ${COLOR_BOLD}${launcher_exe}${COLOR_RESET}"
+    echo "Wine Prefix: ${COLOR_BOLD}${WINEPREFIX}${COLOR_RESET}"
+    echo "Prefix architecture: ${COLOR_BOLD}64 bit${COLOR_RESET}"
+    echo
+    echo "${COLOR_BOLD_CYAN}[Runner Options Tab]${COLOR_RESET}"
+    echo "Wine Version: ${COLOR_BOLD}System (11.0)${COLOR_RESET}"
+    echo "Enable DXVK: ${COLOR_BOLD}Toggle On${COLOR_RESET}"
+    echo "DXVK Version: ${COLOR_BOLD}Manual${COLOR_RESET}"
+    echo "Enable VKD3D: ${COLOR_BOLD}Toggle On${COLOR_RESET}"
+    echo "VKD3D Version: ${COLOR_BOLD}Manual${COLOR_RESET}"
+    echo "Enable D3D Extras: ${COLOR_BOLD}Toggle On${COLOR_RESET}"
+    echo "D3D Extras Version: ${COLOR_BOLD}v2 (default)${COLOR_RESET}"
+    echo "Enable DXVK-NVAPI / DLSS: ${COLOR_BOLD}Toggle On${COLOR_RESET}"
+    echo "DXVK NVAPI Version: ${COLOR_BOLD}v0.9.0 (default)${COLOR_RESET}"
+    echo
+    echo "${COLOR_BOLD_CYAN}[System Options]${COLOR_RESET}"
+    echo "Disable Lutris Runtime: ${COLOR_BOLD}Toggle On${COLOR_RESET}"
+    echo "Prefer System Libraries: ${COLOR_BOLD}Toggle On${COLOR_RESET}"
+    echo
+    echo "${COLOR_BOLD_CYAN}[Other]${COLOR_RESET}"
+    echo "Enable Gamemode: ${COLOR_BOLD}On (unless you use falcond)${COLOR_RESET}"
+    echo
+    echo "${COLOR_BOLD_YELLOW}Notes:${COLOR_RESET}"
+    echo "- Gamemode is optional but highly recommended."
+    echo "- Settings not mentioned here can be left default or customized at will."
+    echo
+    log info "Saved Lutris profile reference to: ${profile_file}"
 }
 
 #======================================#
@@ -242,7 +324,3 @@ fi
 
 # Start installation
 run_installer
-
-# #### REMOVE ME ####
-# echo "NUKING ${WINEPREFIX} FOR TESTING PURPOSES"
-# rm -rf ${WINEPREFIX}

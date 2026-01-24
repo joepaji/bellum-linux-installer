@@ -51,25 +51,23 @@ precheck_validate_wineprefix() {
 
     if [ -n "$WINEPREFIX_ARG" ]; then
         WINEPREFIX="$WINEPREFIX_ARG"
-        WINEPREFIX_SOURCE="$(basename $0) argument"
-    else
-        # Check if WINEPREFIX is set
-        if [ -n "$WINEPREFIX" ]; then
-            WINEPREFIX_SOURCE="environment variable"
-            log info "WINEPREFIX is already set to: ${COLOR_BOLD_YELLOW}$WINEPREFIX${COLOR_RESET}"
-            echo
-            read -p "Do you want to use this path? (Y/n): " USE_EXISTING
+        WINEPREFIX_SOURCE="$(basename "$0") argument"
+    elif [ -n "$WINEPREFIX" ]; then
+        WINEPREFIX_SOURCE="environment variable"
+        log info "WINEPREFIX is already set to: ${COLOR_BOLD_YELLOW}$WINEPREFIX${COLOR_RESET}"
+        echo
+        read -p "Do you want to use this path? (Y/n): " USE_EXISTING
 
-            if [ -n "$USE_EXISTING" ] && [[ ! "$USE_EXISTING" =~ ^[Yy]$ ]]; then
-                echo -n "Enter the desired WINEPREFIX path (e.g. /mx500/games/Bellum): " 
-                read WINEPREFIX
-                WINEPREFIX_SOURCE="user input"
-                
-                if [ -z "$WINEPREFIX" ]; then
-                    log error "WINEPREFIX path cannot be empty"
-                    return 1
-                fi
+        if [ -n "$USE_EXISTING" ] && [[ ! "$USE_EXISTING" =~ ^[Yy]$ ]]; then
+            echo -n "Enter the desired WINEPREFIX path (e.g. /mx500/games/Bellum): "
+            read WINEPREFIX
+            WINEPREFIX_SOURCE="user input"
+
+            if [ -z "$WINEPREFIX" ]; then
+                log error "WINEPREFIX path cannot be empty"
+                return 1
             fi
+        fi
     else
         log error "WINEPREFIX not provided."
         if command -v print_usage &> /dev/null; then
@@ -87,7 +85,6 @@ precheck_validate_wineprefix() {
         fi
         return 1
     fi
-fi
 
     # Trim trailing forward slash from WINEPREFIX
     WINEPREFIX="${WINEPREFIX%/}"
@@ -137,16 +134,26 @@ fi
 
     WINEPREFIX_DEVICE=$(df "$WINEPREFIX_PARENT" 2>/dev/null | tail -1 | awk '{print $1}')
     DEVICE_NAME=$(basename "$WINEPREFIX_DEVICE")
-    # Remove partition number (e.g., sda1 -> sda, nvme0n1p1 -> nvme0n1)
-    DEVICE_BASE=$(echo "$DEVICE_NAME" | sed 's/[0-9]*$//')
 
-    # Get device info to check if it's SSD/NVME
-    SYSFS_PATH="/sys/block/${DEVICE_BASE}/queue/rotational"
-
-    if [ -f "$SYSFS_PATH" ]; then
-        ROTATIONAL=$(cat "$SYSFS_PATH" 2>/dev/null)
+    if command -v lsblk &> /dev/null; then
+        ROTATIONAL=$(lsblk -no rota "$WINEPREFIX_DEVICE" 2>/dev/null | head -n 1)
         if [ "$ROTATIONAL" = "0" ]; then
             IS_SSD=1
+        fi
+    else
+        # Remove partition number (e.g., sda1 -> sda, nvme0n1p1 -> nvme0n1)
+        if [[ "$DEVICE_NAME" == nvme* ]]; then
+            DEVICE_BASE=$(echo "$DEVICE_NAME" | sed 's/p[0-9]*$//')
+        else
+            DEVICE_BASE=$(echo "$DEVICE_NAME" | sed 's/[0-9]*$//')
+        fi
+
+        SYSFS_PATH="/sys/block/${DEVICE_BASE}/queue/rotational"
+        if [ -f "$SYSFS_PATH" ]; then
+            ROTATIONAL=$(cat "$SYSFS_PATH" 2>/dev/null)
+            if [ "$ROTATIONAL" = "0" ]; then
+                IS_SSD=1
+            fi
         fi
     fi
 
@@ -154,6 +161,10 @@ fi
         log info "✓ WINEPREFIX device is an SSD/NVME (optimal performance)"
     else
         log warn "WINEPREFIX device is NOT an SSD/NVME (may have performance issues)"
+        echo
+        if ! confirm_proceed "Astarte Developers strongly recommend using NVMe or SSD for the game. Are you sure you want to proceed? (Y/n): "; then
+            return 1
+        fi
     fi
 }
 
@@ -356,10 +367,34 @@ precheck_winetricks() {
 
     WINETRICKS_BIN="$(command -v winetricks)"
     
-    # Clean up extracted directory (keep the tar.gz)
-    log info "Cleaning up extracted winetricks directory..."
-    rm -rf "$WINETRICKS_DIR"
+        # Clean up extracted directory (keep the tar.gz)
+        log info "Cleaning up extracted winetricks directory..."
+        rm -rf "$WINETRICKS_DIR"
+        cleanup_packages_tmp_root "$WINETRICKS_ARCHIVE"
     fi
+}
+
+precheck_proton_ge() {
+    # ============================================================
+    # PRECHECK 6: Ensure Proton GE is available and patched
+    # ============================================================
+    log info "Ensuring Proton GE ${PROTON_VER} is available..."
+
+    local proton_dir="${WORKDIR}/${PROTON_VER}"
+    if [ ! -d "$proton_dir" ]; then
+        if ! command -v wget &> /dev/null; then
+            log error "Proton GE is missing and wget is not available to download it."
+            echo
+            echo "${COLOR_BOLD_YELLOW}Install wget or place ${PROTON_VER} in the project root:${COLOR_RESET}"
+            echo "  - Fedora: ${COLOR_BOLD}sudo dnf install wget${COLOR_RESET}"
+            echo "  - Ubuntu/Debian: ${COLOR_BOLD}sudo apt install wget${COLOR_RESET}"
+            echo "  - Arch: ${COLOR_BOLD}sudo pacman -S wget${COLOR_RESET}"
+            return 1
+        fi
+        log info "✓ wget found for Proton GE download"
+    fi
+
+    ensure_proton_ge
 }
 
 run_prechecks() {
@@ -369,6 +404,7 @@ run_prechecks() {
     precheck_umu_run || return 1
     precheck_launcher_installer || return 1
     precheck_winetricks || return 1
+    precheck_proton_ge || return 1
 }
 
 if ! run_prechecks; then

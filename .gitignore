@@ -1,0 +1,8 @@
+logs/
+installer-cache/
+lutris_profile.txt
+.astarte_launcher_path
+AstarteLauncher.sh
+packages/.tmp/
+**/__pycache__/
+*.pyc
