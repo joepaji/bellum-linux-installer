@@ -54,9 +54,9 @@ The release tarball (`bellum-installer-linux-amd64-v2.0.0.tar.gz`) contains:
 
 ```
 bellum-installer-linux-amd64-v2.0.0.tar.gz
-├── bellum-installer          # Installer binary
-├── bellum-uninstaller        # Uninstaller binary
-└── packages/                 # All bundled packages
+├── installer          # Installer binary
+├── uninstaller        # Uninstaller binary
+└── packages/          # All bundled packages
 ```
 
 ##  ** ONLY Nvidia Blackwell 5000 Series GPUs **
