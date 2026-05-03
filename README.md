@@ -17,21 +17,38 @@ tar -xzf bellum-installer-linux-amd64-v2.0.0.tar.gz
 cd bellum-installer-linux-amd64-v2.0.0
 ```
 
-4. Run the installer:
+### Install Game
+
+1. Run the installer:
 
 ```bash
 ./installer
 ```
 
-5. 
+2. Select the directory where you want to install Bellum. The WINEPREFIX named `Bellum` will be created in the selected directory.
+
+3. Let the installer do its thing until the AstarteLauncher pops up.
+
+4. Install AstarteLauncher by following the instructions in the launcher.
+
+5. Let the installer complete some post launcher install steps and you're done!
+
+**Note:** `WINEPREFIX` environment variable can also be used to install Bellum:
+
+```bash
+export WINEPREFIX=/path/to/wineprefix
+./installer
+```
 
 ### Uninstallation
 
+Set the `WINEPREFIX` env var to the one used to install the game. Then run unintsaller script.
 ```bash
-./bellum-uninstaller -uninstall -wineprefix /path/to/wineprefix
+export WINEPREFIX=/path/to/wineprefix
+./uninstaller
 ```
 
-## Release Tarball
+## Release Tarball Structure
 
 The release tarball (`bellum-installer-linux-amd64-v2.0.0.tar.gz`) contains:
 
@@ -42,28 +59,12 @@ bellum-installer-linux-amd64-v2.0.0.tar.gz
 └── packages/                 # All bundled packages
 ```
 
-End users extract and run:
+##  ** ONLY Nvidia Blackwell 5000 Series GPUs **
+If you have an RTX 5000 series GPU running driver level `595`, you will need to downgrade to `590` before installing Bellum.
 
-```bash
-tar -xzf bellum-installer-linux-amd64-v2.0.0.tar.gz
-./bellum-installer -install -wineprefix /path/to/wineprefix
-# OR
-./bellum-uninstaller -uninstall -wineprefix /path/to/wineprefix
-```
+The driver is just plain broken for UE5 on wine/proton and it will fail to load shaders every time.
 
-## Building
-
-```bash
-# Build both binaries
-make all
-
-# Create release tarball
-make release
-
-# Clean build artifacts
-make clean
-```
-
+`590` is the latest driver level that is confirmed to be working for these GPUs.
 
 ## Implementation Notes
 
