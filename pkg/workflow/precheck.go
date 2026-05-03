@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"bellum-installer/pkg/config"
 	"bellum-installer/pkg/core"
@@ -151,6 +152,7 @@ func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	fmt.Println()
 	logger.Info("Select the directory where you want to install Bellum...")
 	logger.Info("This will create a new WINEPREFIX named 'Bellum' in the selected location.")
+	time.Sleep(2 * time.Second)
 
 	result, err := gui.PickDirectory("")
 	if err != nil {

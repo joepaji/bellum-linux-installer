@@ -27,7 +27,7 @@ func main() {
 	flag.Parse()
 
 	if *help {
-		fmt.Println("Bellum Linux Installer - Go Edition")
+		fmt.Println("Bellum Linux Installer")
 		fmt.Println()
 		fmt.Println("Usage: bellum-installer [options]")
 		fmt.Println()
@@ -64,7 +64,7 @@ func main() {
 	}
 	defer logger.Close()
 
-	logger.Info("Bellum Linux Installer - Go Edition")
+	logger.Info("Bellum Linux Installer")
 
 	// Determine WINEPREFIX
 	var selectedWINEPREFIX string
@@ -166,7 +166,7 @@ func main() {
 	fmt.Printf("%sInstallation completed successfully!%s\n", core.ColorBoldGreen, core.ColorReset)
 	fmt.Println()
 	fmt.Println("You can now launch Bellum using the 'Bellum' using any of these:")
-	fmt.Printf("%s", core.Colorize("- Desktop Shortcut (Recommended)\n", core.Bold))
+	fmt.Printf("%s", core.Colorize(" - Desktop Shortcut (Recommended)\n", core.Bold))
 	fmt.Println(" - Applications Menu -> Games -> Bellum")
 	fmt.Println(" - Terminal Command: `Bellum`")
 	fmt.Println()

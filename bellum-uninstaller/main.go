@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	if *help {
-		fmt.Println("Bellum Linux Uninstaller - Go Edition")
+		fmt.Println("Bellum Linux Uninstaller")
 		fmt.Println()
 		fmt.Println("Usage: bellum-uninstaller [options]")
 		fmt.Println()
@@ -55,7 +55,7 @@ func main() {
 	}
 	defer logger.Close()
 
-	logger.Info("Bellum Linux Uninstaller - Go Edition")
+	logger.Info("Bellum Linux Uninstaller")
 	fmt.Println()
 
 	// Resolve WINEPREFIX from env var or GUI picker if not provided via flag
