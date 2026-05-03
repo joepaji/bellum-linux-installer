@@ -1,103 +1,114 @@
 # Bellum Linux Installer
 
-This repo provides a guided Bash installer to set up Bellum on Linux using Wine (11.0 stable), Proton GE, DXVK, VKD3D, and winetricks. It includes prechecks, dependency guidance, and a post-install Lutris configuration reference.
+Welcome to the Bellum Linux Installer and Uninstaller. This is a linux Proton/Wine based install orchestrator for Bellum.
+Please note, this is NOT official support or an official native release. I am just a supporter of the game and am not affiliated with Astarte Industries.
+That said, my goal is making sure none of my fellow linux gamers have to see the light of Windows to play this awesome game.
 
-## What's Included
-- `installer.sh`: Main installer entrypoint.
-- `utils/precheck.sh`: Dependency checks and environment validation.
-- `utils/utils.sh`: Shared helpers (logging, command execution, package extraction, downloads).
-- `utils/versions.env`: Single source of truth for tool versions.
-- `packages/`: Local archives for winetricks, DXVK, and VKD3D.
-- `GE-Proton10-28/`: Bundled Proton GE build (used or re-downloaded if missing).
-- `scripts/streamer_test.sh`: Command output streamer test harness.
+## Download & Install
 
-## Requirements
-Required:
-- `bash`
-- Wine 11.0 stable (`wine`, `wineboot`, `msidb`)
-- `umu-run` (umu-launcher 1.3.0)
-- `winetricks` (installer can install from `packages/` if missing; requires `sudo` + `make`)
-- `wget`
-- `tar`
-- `awk`, `sed`, `df`, `lsblk`, `mktemp` (coreutils/util-linux)
-- `cabextract` (required by winetricks)
+### Unpack the Release Package
 
-Optional:
-- `stdbuf` (from coreutils) for smoother streamed output
+1. Download the release tarball from the [Releases Page](https://github.com/joepaji/bellum-linux-installer/releases/latest)
 
-Network access is required only if Proton GE or the launcher installer needs to be downloaded.
+2. Open a terminal in the directory where you downloaded the release tarball
 
-## Unpack the Release Package
-If you downloaded the release tarball, unpack it into a directory and run the installer from there:
+3. Extract the release tarball & access extracted directory:
+
 ```bash
-tar -xzf bellum-linux-installer-v1.0.0.tar.gz
-cd bellum-linux-installer
+tar -xzf bellum-installer-linux-amd64-v2.0.0.tar.gz 
+cd bellum-installer-linux-amd64-v2.0.0
 ```
 
-## Quick Start
+### Install Game
+
+1. Run the installer:
+
 ```bash
-./installer.sh --wineprefix /path/to/WINEPREFIX --launcher-installer /path/to/AstarteLauncher-amd64-installer.exe
+./installer
 ```
 
-You can also set `WINEPREFIX` in the environment and omit `--wineprefix`, or just export it before running the installer:
+
+**Optional FSR 4.1 for AMD Users:**
+
+By default, this will install the current FSR 4.0.0 level.
+
+If you want the leaked FSR 4.1.0 level, use the **--fsr41** flag 
+
 ```bash
-export WINEPREFIX=/path/to/WINEPREFIX
-./installer.sh --launcher-installer /path/to/AstarteLauncher-amd64-installer.exe
+./installer --fsr41
 ```
 
-If `--launcher-installer` is not provided, the installer will download it (requires `wget`).
 
-## Usage
+2. Select the directory where you want to install Bellum and confirm the install summary.
+
+The WINEPREFIX named `Bellum` will be created in the selected directory.
+   
+<img width="800" alt="image" src="https://github.com/user-attachments/assets/826d7e36-1471-4cd2-9c61-8440252456aa" />
+<img width="800" alt="image" src="https://github.com/user-attachments/assets/5347c5bd-c44d-4f37-b89b-cdbf4e137ae9" />
+
+
+3. Let the installer do its thing until the AstarteLauncher pops up.
+4. Install AstarteLauncher by following the instructions in the launcher.
+<img width="800"  alt="image" src="https://github.com/user-attachments/assets/5ba0340b-9d2a-45f4-954c-83befd331534" />
+
+5. Let the installer complete some post launcher install steps and you're done!
+
+<img width="800" alt="image" src="https://github.com/user-attachments/assets/aab9f336-9307-4e2a-b7da-f5f8655eb92b" />
+
+
+**Note:** `WINEPREFIX` environment variable can also be used to install Bellum:
+
 ```bash
-./installer.sh [--force-wine-version] [--wineprefix PATH] [--launcher-installer PATH]
+export WINEPREFIX=/path/to/wineprefix
+./installer
 ```
 
-Positional args are also accepted:
+## Playing the Game
+
+### Option 1 - Desktop Shortcut
+This guy will be added to your Desktop once install is complete:
+<img width="106" height="117" alt="image" src="https://github.com/user-attachments/assets/1305bf0b-994f-4726-a75f-64e5f5bbac7e" />
+
+### Option 2 - Application Menu
+This guy will be added under the **Games** category in your Application Menu:
+<img width="537" height="67" alt="image" src="https://github.com/user-attachments/assets/d6acdfed-7569-415d-8e42-dac896d7bce9" />
+
+### Option 3 - Terminaal
+Just open a terminal anywhere, and run the `Bellum` command.
+<img width="800" alt="image" src="https://github.com/user-attachments/assets/e24b60bc-7aaa-4fc8-99ff-26ed24fbe7e7" />
+
+## Uninstallation
+
+Set the `WINEPREFIX` env var to the one used to install the game. Then run unintsaller script.
 ```bash
-./installer.sh [WINEPREFIX] [LAUNCHER_INSTALLER_PATH]
+export WINEPREFIX=/path/to/wineprefix
+./uninstaller
 ```
 
-## Notes
-- `WINEPREFIX` must be an absolute path and must not already exist. The precheck flow will prompt if a value is missing.
-- Proton GE is downloaded and extracted if missing, and `user_settings.py` is patched automatically.
-- Logs are written to `logs/installer.log` when the installer runs.
-- `packages/.tmp/` is used for temporary extraction during installs.
+## Release Tarball Structure
 
-## Post-Install: Lutris Setup
-At the end of the install, the script prints the exact Lutris settings and writes them to `lutris_profile.txt` in the project root for later reference.
+The release tarball (`bellum-installer-linux-amd64-v2.0.0.tar.gz`) contains:
 
-Use the following configuration in Lutris (the installer prints the resolved `WINEPREFIX` and executable path):
+```
+bellum-installer-linux-amd64-v2.0.0.tar.gz
+├── installer          # Installer binary
+├── uninstaller        # Uninstaller binary
+└── packages/          # All bundled packages
+```
 
-## Lutris Game Profile
+##  ** ONLY Nvidia Blackwell 5000 Series GPUs **
+If you have an RTX 5000 series GPU running driver level `595`, you will need to downgrade to `590` before installing Bellum.
 
-### [Game Info]
----
-**Name:** Bellum  
-**Runner:** Wine
+The driver is just plain broken for UE5 on wine/proton and it will fail to load shaders every time.
 
-### [Game Options Tab]
----
-**Executable:** $WINEPREFIX/drive_c/users/steamuser/AppData/Local/Astarte Industries/Astarte Launcher/AstarteLauncher.exe
-**Wine Prefix:** $WINEPREFIX
-**Prefix architecture:** 64 bit
+`590` is the latest driver level that is confirmed to be working for these GPUs.
 
-### [Runner Options Tab]
----
-**Wine Version:** System (11.0)  
-**Enable DXVK:** Toggle On  
-**DXVK Version:** Manual  
-**Enable VKD3D:** Toggle On  
-**VKD3D Version:** Manual  
-**Enable D3D Extras:** Toggle On  
-**D3D Extras Version:** v2 (default)  
-**Enable DXVK-NVAPI / DLSS:** Toggle On  
-**DXVK NVAPI Version:** v0.9.0 (default)  
+## Implementation Notes
 
-### [System Options]
-**Disable Lutris Runtime:** Toggle On  
-**Prefer System Libraries:** Toggle On  
-**Enable Gamemode:** On (unless you use falcond)
-
-### Notes:
-- Gamemode is optional but highly recommended.
-- Settings not mentioned here can be left default or customized at will.
+- Supports FSR 4.0 and FSR 4.1 (with --fsr41)
+- Supports DLSS and Nvidia Framegen (5000 series users see driver note above)
+- All scripts are Go binaries with no external dependencies
+- Packages are bundled in the release tarball, not statically embedded
+- The installer detects GPU type and configures accordingly
+- All logging is written to `logs/installer.log`
+- The uninstaller removes all launcher files and optionally the WINEPREFIX
