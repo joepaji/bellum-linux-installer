@@ -39,9 +39,7 @@ If you want the leaked FSR 4.1.0 level, use the **--fsr41** flag
 ```
 
 
-2. Select the directory where you want to install Bellum and confirm the install summary.
-
-The WINEPREFIX named `Bellum` will be created in the selected directory.
+2. Select the directory where you want to install Bellum and confirm the install summary. A WINEPREFIX named `Bellum` will be created in the selected directory.
    
 <img width="800" alt="image" src="https://github.com/user-attachments/assets/826d7e36-1471-4cd2-9c61-8440252456aa" />
 <img width="800" alt="image" src="https://github.com/user-attachments/assets/5347c5bd-c44d-4f37-b89b-cdbf4e137ae9" />
