@@ -12,23 +12,47 @@ import (
 	"bellum-installer/pkg/packages"
 )
 
+// validateEnvironmentVariables validates all environment variables before setting them
+func validateEnvironmentVariables(wineprefix, protonpath string) error {
+	if err := validateEnvVar("WINEPREFIX"); err != nil {
+		return err
+	}
+
+	if err := validateEnvVar("PROTONPATH"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateEnvVar checks that a required environment variable is set.
+func validateEnvVar(name string) error {
+	if _, err := core.GetRequiredEnvVar(name); err != nil {
+		return err
+	}
+	return nil
+}
+
 // InstallConfig holds configuration for installation
 type InstallConfig struct {
-	WINEPREFIX        string
-	ProtonPath        string
-	GPUType           string
-	IsAMDGPU          bool
-	LauncherInstaller string
-	Workdir           string
-	IsFSR41           bool
+	WINEPREFIX         string
+	ProtonPath         string
+	GPUType            string
+	IsAMDGPU           bool
+	LauncherInstaller  string
+	Workdir            string
+	IsFSR41            bool
+	LauncherBinaryPath string
+	WinetricksPath     string
+	WinetricksTmpDir   string
 }
 
 // InstallDXVK installs DXVK for AMD GPUs
-func InstallDXVK(gpuType string, workdir string, logger *core.Logger) error {
+func InstallDXVK(gpuType string, workdir string, logger *core.Logger) (string, error) {
 	// Only install DXVK for AMD GPUs
 	if !strings.Contains(strings.ToLower(gpuType), "amd") && !strings.Contains(strings.ToLower(gpuType), "radeon") {
 		logger.Info(fmt.Sprintf("Skipping DXVK installation for non-AMD GPU: %s", gpuType))
-		return nil
+		return "", nil
 	}
 
 	archive := filepath.Join(workdir, "packages", "dxvk-"+cfg.DefaultVersions.DXVKVer+".tar.gz")
@@ -36,14 +60,12 @@ func InstallDXVK(gpuType string, workdir string, logger *core.Logger) error {
 
 	logger.Info("Installing DXVK...")
 	if _, err := os.Stat(archive); os.IsNotExist(err) {
-		logger.Error(fmt.Sprintf("DXVK archive not found: %s", archive))
-		return fmt.Errorf("DXVK archive not found: %s", archive)
+		return "", fmt.Errorf("DXVK archive not found: %s", archive)
 	}
 
 	tmpDir, err := packages.ExtractPackage(archive, "dxvk")
 	if err != nil {
-		logger.Error("Failed to extract DXVK archive")
-		return err
+		return "", err
 	}
 
 	// Find the dxvk_setup.sh script
@@ -52,9 +74,7 @@ func InstallDXVK(gpuType string, workdir string, logger *core.Logger) error {
 		// Try to find subdirectory
 		entries, err := os.ReadDir(tmpDir)
 		if err != nil || len(entries) == 0 {
-			logger.Error("DXVK setup script not found after extraction.")
-			packages.CleanupTempDir(archive)
-			return fmt.Errorf("DXVK setup script not found")
+			return "", fmt.Errorf("DXVK setup script not found")
 		}
 		for _, entry := range entries {
 			if entry.IsDir() {
@@ -65,37 +85,28 @@ func InstallDXVK(gpuType string, workdir string, logger *core.Logger) error {
 	}
 
 	if _, err := os.Stat(filepath.Join(installDir, "dxvk_setup.sh")); os.IsNotExist(err) {
-		logger.Error("DXVK setup script not found after extraction.")
-		packages.CleanupTempDir(archive)
-		return fmt.Errorf("DXVK setup script not found")
+		return "", fmt.Errorf("DXVK setup script not found")
 	}
 
 	// Run dxvk_setup.sh install
 	logFile := filepath.Join(workdir, "logs", "installer.log")
 	if err := core.RunCommand(core.RunModeSilent, []string{filepath.Join(installDir, "dxvk_setup.sh"), "install"}, logger, logFile); err != nil {
-		logger.Error("DXVK installation failed.")
-		packages.CleanupTempDir(archive)
-		return err
+		return "", err
 	}
 
 	// Copy dxvk.conf to WINEPREFIX
 	dxvkConf := filepath.Join(installDir, "dxvk.conf")
-	wineprefix := os.Getenv("WINEPREFIX")
-	if wineprefix == "" {
-		logger.Error("WINEPREFIX not set")
-		packages.CleanupTempDir(archive)
-		return fmt.Errorf("WINEPREFIX not set")
+	wineprefix, err := core.GetRequiredEnvVar("WINEPREFIX")
+	if err != nil {
+		return "", err
 	}
 
 	if err := copyFile(dxvkConf, filepath.Join(wineprefix, "dxvk.conf")); err != nil {
-		logger.Error("Failed to copy dxvk.conf.")
-		packages.CleanupTempDir(archive)
-		return err
+		return "", err
 	}
 
-	packages.CleanupTempDir(archive)
 	logger.Info("[OK] DXVK installed")
-	return nil
+	return tmpDir, nil
 }
 
 // RunInstaller runs the main installation workflow
@@ -103,7 +114,12 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	logger.Info("Starting Installation")
 	fmt.Println()
 
-	// Set environment variables
+	// Clean up winetricks temp directory at the end
+	if config.WinetricksTmpDir != "" {
+		defer os.RemoveAll(config.WinetricksTmpDir)
+	}
+
+	// Set environment variables first
 	os.Setenv("PROTONPATH", config.ProtonPath)
 	os.Setenv("WINEPREFIX", config.WINEPREFIX)
 	os.Setenv("WINEARCH", "win64")
@@ -113,13 +129,17 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	os.Setenv("STEAM_COMPAT_CLIENT_INSTALL_PATH", filepath.Join(os.Getenv("HOME"), ".steam", "steam"))
 	os.Setenv("GAMEID", "1")
 
+	// Validate environment variables are set
+	if err := validateEnvironmentVariables(config.WINEPREFIX, config.ProtonPath); err != nil {
+		return core.LogAndReturn(fmt.Errorf("invalid environment variable: %w", err), core.ErrorLevelCritical, logger)
+	}
+
 	// Get launcher installer path
 	launcherInstaller := config.LauncherInstaller
 	if launcherInstaller == "" {
 		state, err := packages.DownloadLauncherInstaller(config.Workdir, logger)
 		if err != nil {
-			logger.Error("Failed to download launcher installer")
-			return err
+			return core.LogAndReturn(fmt.Errorf("failed to download launcher installer: %w", err), core.ErrorLevelCritical, logger)
 		}
 		launcherInstaller = state.InstallerPath
 		defer packages.CleanupLauncherInstaller(state, logger)
@@ -129,12 +149,10 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	logger.Info("Initializing WINEPREFIX with Proton base")
 	logFile := filepath.Join(config.Workdir, "logs", "installer.log")
 	if err := core.RunCommand(core.RunModeSilent, []string{"umu-run", cfg.DefaultVersions.Binaries.Msidb}, logger, logFile); err != nil {
-		logger.Warn("umu-run /usr/bin/msidb failed")
 		return err
 	}
 
 	if err := core.RunCommand(core.RunModeSilent, []string{cfg.DefaultVersions.Binaries.Wineboot, "--init"}, logger, logFile); err != nil {
-		logger.Error("wineboot --init failed")
 		return err
 	}
 
@@ -152,8 +170,8 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	}
 
 	for _, dll := range dlls {
-		if err := core.RunCommand(core.RunModeSilent, []string{"winetricks", "-q", dll}, logger, logFile); err != nil {
-			logger.Error(fmt.Sprintf("Failed to install %s", dll))
+		winetricksArgs := []string{config.WinetricksPath, "-q", dll}
+		if err := core.RunCommand(core.RunModeSilent, winetricksArgs, logger, logFile); err != nil {
 			return err
 		}
 		logger.Info(fmt.Sprintf("[OK] %s", dll))
@@ -168,7 +186,6 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	// Run the launcher installer
 	proton := filepath.Join(config.ProtonPath, "proton")
 	if err := core.RunCommand(core.RunModeSilent, []string{proton, "run", launcherInstaller}, logger, logFile); err != nil {
-		logger.Error("Launcher installation failed.")
 		return err
 	}
 
@@ -176,28 +193,28 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	logger.Warn("I'm not done! Don't launch game or close this script just yet")
 
 	// Set Windows 11
-	if err := core.RunCommand(core.RunModeSilent, []string{"winetricks", "win11"}, logger, logFile); err != nil {
-		logger.Warn("winetricks win11 failed (may be expected)")
-	}
+	core.RunCommand(core.RunModeSilent, []string{config.WinetricksPath, "win11"}, logger, logFile)
 
 	fmt.Println()
 
 	// Install DXVK (AMD only)
-	if err := InstallDXVK(config.GPUType, config.Workdir, logger); err != nil {
+	dxvkTmpDir, err := InstallDXVK(config.GPUType, config.Workdir, logger)
+	if err != nil {
 		return err
+	}
+	if dxvkTmpDir != "" {
+		defer packages.CleanupSpecificTempDir(dxvkTmpDir)
 	}
 
 	// Configure WINEPREFIX
 	logger.Info("Configuring WINEPREFIX with things Bellum likes")
-	if err := core.RunCommand(core.RunModeSilent, []string{"winetricks", "grabfullscreen=y", "windowmanagerdecorated=n", "mwo=disabled"}, logger, logFile); err != nil {
-		logger.Error("Winetricks configuration failed.")
+	if err := core.RunCommand(core.RunModeSilent, []string{config.WinetricksPath, "grabfullscreen=y", "windowmanagerdecorated=n", "mwo=disabled"}, logger, logFile); err != nil {
 		return err
 	}
 
 	// Remove mono for AMD GPUs
 	if config.IsAMDGPU {
-		if err := core.RunCommand(core.RunModeSilent, []string{"winetricks", "remove_mono"}, logger, logFile); err != nil {
-			logger.Error("Mono removal failed.")
+		if err := core.RunCommand(core.RunModeSilent, []string{config.WinetricksPath, "remove_mono"}, logger, logFile); err != nil {
 			return err
 		}
 	}
@@ -210,7 +227,7 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	// Set DLL overrides
 	core.RunCommand(core.RunModeSilent, []string{"wine", "reg", "add", `HKCU\Software\Wine\DirectInput`, "/v", "RawInput", "/t", "REG_DWORD", "/d", "1", "/f"}, logger, logFile)
 
-	// End wine session
+// End wine session
 	core.RunCommand(core.RunModeSilent, []string{"wineboot", "--end-session"}, logger, logFile)
 
 	return nil
@@ -221,33 +238,29 @@ func GenerateLauncher(config InstallConfig, logger *core.Logger) error {
 	// Copy icon to system location
 	iconPath := filepath.Join(config.Workdir, "packages", "launcher_1_256x256x32.png")
 	if err := launchers.CopyIcon(iconPath); err != nil {
-		logger.Warn(fmt.Sprintf("Failed to copy icon: %v", err))
+		logger.Warn(err.Error())
 	}
 
 	// Generate launcher config
 	launcherConfig := launchers.LauncherConfig{
-		Wineprefix: config.WINEPREFIX,
-		Protonpath: config.ProtonPath,
-		GPUType:    config.GPUType,
-		IconPath:   iconPath,
+		Wineprefix:         config.WINEPREFIX,
+		Protonpath:         config.ProtonPath,
+		GPUType:            config.GPUType,
+		IconPath:           iconPath,
+		LauncherBinaryPath: config.LauncherBinaryPath,
 	}
 
-	if err := launchers.GenerateLauncher(launcherConfig); err != nil {
-		logger.Error(fmt.Sprintf("Failed to generate launcher: %v", err))
+	if err := launchers.GenerateLauncher(launcherConfig, logger); err != nil {
 		return err
 	}
 
-	logger.Info("[OK] Game launcher installed: /usr/local/bin/Bellum")
+	logger.Info(fmt.Sprintf("[OK] Game launcher installed: %s", config.LauncherBinaryPath))
 
 	// Generate launch vars file
 	if config.GPUType == "NVIDIA" {
-		if err := launchers.GenerateLaunchVarsFileNvidia(config.WINEPREFIX); err != nil {
-			logger.Warn(fmt.Sprintf("Failed to generate NVIDIA launch vars: %v", err))
-		}
+		launchers.GenerateLaunchVarsFileNvidia(config.WINEPREFIX)
 	} else if config.GPUType == "AMD" {
-		if err := launchers.GenerateLaunchVarsAMD(config.WINEPREFIX, config.IsFSR41); err != nil {
-			logger.Warn(fmt.Sprintf("Failed to generate AMD launch vars: %v", err))
-		}
+		launchers.GenerateLaunchVarsAMD(config.WINEPREFIX, config.IsFSR41)
 	}
 
 	return nil

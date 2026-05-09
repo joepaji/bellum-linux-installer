@@ -114,20 +114,22 @@ func main() {
 	)
 
 	// Confirm with user before proceeding
-	if !core.ConfirmProceed() {
+	if !core.AskBool("Do you want to proceed with the installation? (Y/n): ") {
 		fmt.Println("Installation cancelled.")
 		os.Exit(0)
 	}
 
 	// Create InstallConfig
 	installConfig := workflow.InstallConfig{
-		WINEPREFIX:        result.WINEPREFIX,
-		ProtonPath:        result.ProtonPath,
-		GPUType:           result.GPUType,
-		IsAMDGPU:          result.IsAMDGPU,
-		LauncherInstaller: result.LauncherInstaller,
-		Workdir:           workdir,
-		IsFSR41:           *fsr41,
+		WINEPREFIX:         result.WINEPREFIX,
+		ProtonPath:         result.ProtonPath,
+		GPUType:            result.GPUType,
+		IsAMDGPU:           result.IsAMDGPU,
+		LauncherInstaller:  result.LauncherInstaller,
+		Workdir:            workdir,
+		IsFSR41:            *fsr41,
+		LauncherBinaryPath: config.LauncherBinaryPath,
+		WinetricksPath:     result.WinetricksPath,
 	}
 
 	// Run FSR4.1 upgrade DLL copy before installation if --fsr41 flag is passed
@@ -223,7 +225,7 @@ func copyFSR41UpgradeDLL(workdir string, logger *core.Logger) error {
 func printInstallerBanner() {
 	banner := `=======================================================================================
 |                     Linux Wine-Proton Installer for Bellum                          |
-======================================================================================`
+=======================================================================================`
 	fmt.Printf("%s%s%s\n", core.ColorBoldBlue, banner, core.ColorReset)
 	fmt.Println()
 }
