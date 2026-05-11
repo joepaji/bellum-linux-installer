@@ -55,13 +55,11 @@ func DownloadLauncherInstaller(workdir string, logger *core.Logger) (*LauncherIn
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, launcherInstallerURL}, logger, logFile); err != nil {
-		logger.Error("Failed to download launcher installer")
-		return nil, fmt.Errorf("failed to download launcher installer: %w", err)
+		return nil, core.LogAndReturn(fmt.Errorf("failed to download launcher installer: %w", err), core.ErrorLevelCritical, logger)
 	}
 
 	if _, err := os.Stat(dest); os.IsNotExist(err) {
-		logger.Error("Download verification failed: launcher installer not found")
-		return nil, fmt.Errorf("download verification failed: launcher installer not found")
+		return nil, core.LogAndReturn(fmt.Errorf("download verification failed: launcher installer not found"), core.ErrorLevelCritical, logger)
 	}
 
 	return &LauncherInstallerState{
@@ -84,7 +82,7 @@ func CleanupLauncherInstaller(state *LauncherInstallerState, logger *core.Logger
 	}
 
 	if state.DownloadDir != "" {
-		if err := os.Remove(state.DownloadDir); err != nil && !os.IsNotExist(err) {
+		if err := os.RemoveAll(state.DownloadDir); err != nil && !os.IsNotExist(err) {
 			logger.Warn(fmt.Sprintf("Failed to remove launcher installer directory: %v (directory not empty or does not exist)", err))
 		}
 	}
@@ -107,12 +105,15 @@ func GetLocalProtonPath(workdir, protonVer string) string {
 }
 
 // GetProtonInstallPath returns the path to the proton install directory
-func GetProtonInstallPath(protonVer string) string {
+func GetProtonInstallPath(protonVer string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = os.Getenv("HOME")
 	}
-	return filepath.Join(homeDir, ".local", "share", "bellum", "proton", fmt.Sprintf("bellum-%s", protonVer))
+	if homeDir == "" {
+		return "", fmt.Errorf("unable to determine home directory")
+	}
+	return filepath.Join(homeDir, ".local", "share", "bellum", "proton", fmt.Sprintf("bellum-%s", protonVer)), nil
 }
 
 // EnsureProton downloads and sets up the Proton directory
@@ -121,14 +122,15 @@ func EnsureProton(protonDir, protonVer string, isAMD bool, isFSR41 bool, logger 
 	protonURL := GetProtonURL(protonVer, config.DefaultVersions.ProtonBaseURL)
 
 	// Use the dedicated proton install directory
-	actualProtonDir := GetProtonInstallPath(protonVer)
+	actualProtonDir, err := GetProtonInstallPath(protonVer)
+	if err != nil {
+		return err
+	}
 
 	// Check if proton directory exists
-	dirExists := false
+	dirExists := true
 	if _, err := os.Stat(actualProtonDir); os.IsNotExist(err) {
 		dirExists = false
-	} else {
-		dirExists = true
 	}
 
 	// Check for user_settings.py
@@ -179,7 +181,7 @@ func EnsureProton(protonDir, protonVer string, isAMD bool, isFSR41 bool, logger 
 
 		logger.Info(fmt.Sprintf("Downloading Proton %s...", protonVer))
 
-		tmpDir, err := os.MkdirTemp("", "proton.XXXXXX")
+		tmpDir, err := os.MkdirTemp("", "proton.")
 		if err != nil {
 			return fmt.Errorf("failed to create temp directory for Proton download: %w", err)
 		}
@@ -210,15 +212,13 @@ func EnsureProton(protonDir, protonVer string, isAMD bool, isFSR41 bool, logger 
 	// Check for user_settings.py
 	settingsFile = GetProtonUserSettingsPath(actualProtonDir)
 	if settingsFile == "" {
-		logger.Error("Proton user settings file missing after setup")
-		return fmt.Errorf("Proton user settings file missing: %s", settingsFile)
+		return core.LogAndReturn(fmt.Errorf("Proton user settings file missing: %s", settingsFile), core.ErrorLevelCritical, logger)
 	}
 
 	// Patch settings
 	if err := PatchProtonSettings(settingsFile, isAMD, isFSR41); err != nil {
-		logger.Error("Failed to patch Proton user settings, removing and re-downloading Proton")
 		os.RemoveAll(actualProtonDir)
-		return fmt.Errorf("failed to patch Proton user settings: %w", err)
+		return core.LogAndReturn(fmt.Errorf("failed to patch Proton user settings: %w", err), core.ErrorLevelCritical, logger)
 	}
 
 	return nil
@@ -259,8 +259,7 @@ func downloadFile(dest, url string, logger *core.Logger) error {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, url}, logger, logFile); err != nil {
-		logger.Error(fmt.Sprintf("Failed to download %s", url))
-		return fmt.Errorf("failed to download %s: %w", url, err)
+		return core.LogAndReturn(fmt.Errorf("failed to download %s: %w", url, err), core.ErrorLevelCritical, logger)
 	}
 
 	if _, err := os.Stat(dest); os.IsNotExist(err) {

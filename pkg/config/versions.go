@@ -2,10 +2,10 @@ package config
 
 // Binaries holds the paths to required binaries
 type Binaries struct {
-	Wine     string
-	Wineboot string
-	Msidb    string
-	Winecfg  string
+	Wine       string
+	Wineboot   string
+	Msidb      string
+	Winecfg    string
 	Wineserver string
 }
 

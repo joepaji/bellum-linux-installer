@@ -57,13 +57,9 @@ func PatchProtonSettings(settingsFile string, isAMD bool, isFSR41 bool) error {
 	desired := make(map[string]string)
 
 	// Unified settings for all GPUs using proton-cachyos
-	desired["PROTON_ENABLE_NVAPI"] = "1"
-	desired["PROTON_DLSS_UPGRADE"] = "1"
 	desired["MALLOC_ARENA_MAX"] = "1"
 	desired["PROTON_VKD3D_HEAP"] = "1"
 	desired["VKD3D_CONFIG"] = "descriptor_heap"
-	desired["PROTON_DXVK_D3D8"] = "1"
-	desired["PROTON_NVIDIA_LIBS"] = "1"
 
 	// AMD-specific settings (FSR4 upgrade)
 	if isAMD {
@@ -74,7 +70,13 @@ func PatchProtonSettings(settingsFile string, isAMD bool, isFSR41 bool) error {
 		} else {
 			desired["PROTON_FSR4_UPGRADE"] = "1"
 			desired["PROTON_FSR4_RDNA3_UPGRADE"] = "1"
+			desired["PROTON_MLFG_UPGRADE"] = "1"
 		}
+	} else {
+		desired["PROTON_ENABLE_NVAPI"] = "1"
+		desired["PROTON_DLSS_UPGRADE"] = "1"
+		desired["PROTON_DXVK_D3D8"] = "1"
+		desired["PROTON_NVIDIA_LIBS"] = "1"
 	}
 
 	// Read and process the settings file

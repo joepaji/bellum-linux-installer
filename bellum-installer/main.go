@@ -22,6 +22,7 @@ func main() {
 	wineprefix := flag.String("wineprefix", "", "Path to WINEPREFIX directory (optional if WINEPREFIX env var is set)")
 	launcherInstaller := flag.String("launcher-installer", "", "Path to launcher installer executable")
 	fsr41 := flag.Bool("fsr41", false, "Use FSR 4.1 upgrade path")
+	useProtonForAMD := flag.Bool("proton", false, "Use Proton launch approach for AMD GPUs (same as NVIDIA)")
 	help := flag.Bool("help", false, "Show help message")
 
 	flag.Parse()
@@ -36,6 +37,7 @@ func main() {
 		fmt.Println("  --wineprefix PATH     Path to WINEPREFIX directory (optional if WINEPREFIX env var is set)")
 		fmt.Println("  --launcher-installer PATH  Path to launcher installer executable")
 		fmt.Println("  --fsr41               Use FSR 4.1 upgrade path")
+		fmt.Println("  --proton              Use Proton launch approach for AMD GPUs (same as NVIDIA)")
 		fmt.Println("  --help                Show this help message")
 		fmt.Println()
 		fmt.Println("Examples:")
@@ -130,6 +132,7 @@ func main() {
 		IsFSR41:            *fsr41,
 		LauncherBinaryPath: config.LauncherBinaryPath,
 		WinetricksPath:     result.WinetricksPath,
+		UseProtonForAMD:    *useProtonForAMD,
 	}
 
 	// Run FSR4.1 upgrade DLL copy before installation if --fsr41 flag is passed

@@ -33,7 +33,7 @@ func ExtractPackage(archivePath string, destName string) (string, error) {
 	destNameBase := filepath.Base(destName)
 
 	// Create temp subdirectory
-	tmpDir, err := os.MkdirTemp(tmpRoot, destNameBase+".XXXXXX")
+	tmpDir, err := os.MkdirTemp(tmpRoot, destNameBase+".")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
 	}
@@ -554,11 +554,19 @@ func extractTar(archivePath, destDir string, stripComponents bool) error {
 }
 
 // CleanupTempDir removes the packages/.tmp directory
-func CleanupTempDir(archivePath string) {
-	pkgDir := filepath.Dir(archivePath)
-	tmpRoot := filepath.Join(pkgDir, ".tmp")
+func CleanupTempDir(workdir string) {
+	tmpRoot := filepath.Join(workdir, "packages", ".tmp")
 	if _, err := os.Stat(tmpRoot); err == nil {
-		os.RemoveAll(tmpRoot)
+		if err := os.RemoveAll(tmpRoot); err != nil {
+			// Log warning but don't fail - cleanup is best-effort
+		}
+	}
+}
+
+// CleanupSpecificTempDir removes a specific temp directory
+func CleanupSpecificTempDir(tempDir string) {
+	if tempDir != "" {
+		os.RemoveAll(tempDir)
 	}
 }
 

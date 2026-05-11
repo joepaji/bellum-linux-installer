@@ -151,22 +151,26 @@ func ColorizeSubstr(s, substring, color, restoreColor string) string {
 		return s
 	}
 
-	result := ""
-	remaining := s
+	var builder strings.Builder
+	builder.Grow(len(s) + len(color)*10)
 
+	remaining := s
 	for {
 		idx := strings.Index(remaining, substring)
 		if idx == -1 {
-			result += remaining
+			builder.WriteString(remaining)
 			break
 		}
 
-		result += remaining[:idx]
-		result += color + substring + ColorReset + restoreColor
+		builder.WriteString(remaining[:idx])
+		builder.WriteString(color)
+		builder.WriteString(substring)
+		builder.WriteString(ColorReset)
+		builder.WriteString(restoreColor)
 		remaining = remaining[idx+len(substring):]
 	}
 
-	return result
+	return builder.String()
 }
 
 func splitLines(s string, maxLen int) []string {

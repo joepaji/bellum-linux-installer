@@ -45,6 +45,7 @@ type InstallConfig struct {
 	LauncherBinaryPath string
 	WinetricksPath     string
 	WinetricksTmpDir   string
+	UseProtonForAMD    bool
 }
 
 // InstallDXVK installs DXVK for AMD GPUs
@@ -116,7 +117,11 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 
 	// Clean up winetricks temp directory at the end
 	if config.WinetricksTmpDir != "" {
-		defer os.RemoveAll(config.WinetricksTmpDir)
+		defer func() {
+			if err := os.RemoveAll(config.WinetricksTmpDir); err != nil {
+				logger.Warn(fmt.Sprintf("Failed to clean up winetricks temp directory: %v", err))
+			}
+		}()
 	}
 
 	// Set environment variables first
@@ -193,17 +198,22 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	logger.Warn("I'm not done! Don't launch game or close this script just yet")
 
 	// Set Windows 11
-	core.RunCommand(core.RunModeSilent, []string{config.WinetricksPath, "win11"}, logger, logFile)
+	if err := core.RunCommand(core.RunModeSilent, []string{config.WinetricksPath, "win11"}, logger, logFile); err != nil {
+		logger.Warn("winetricks win11 failed (may be expected)")
+	}
 
 	fmt.Println()
 
 	// Install DXVK (AMD only)
+	var dxvkTmpDir string
+	defer func() {
+		if dxvkTmpDir != "" {
+			packages.CleanupSpecificTempDir(dxvkTmpDir)
+		}
+	}()
 	dxvkTmpDir, err := InstallDXVK(config.GPUType, config.Workdir, logger)
 	if err != nil {
 		return err
-	}
-	if dxvkTmpDir != "" {
-		defer packages.CleanupSpecificTempDir(dxvkTmpDir)
 	}
 
 	// Configure WINEPREFIX
@@ -227,8 +237,13 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	// Set DLL overrides
 	core.RunCommand(core.RunModeSilent, []string{"wine", "reg", "add", `HKCU\Software\Wine\DirectInput`, "/v", "RawInput", "/t", "REG_DWORD", "/d", "1", "/f"}, logger, logFile)
 
-// End wine session
+	// End wine session
 	core.RunCommand(core.RunModeSilent, []string{"wineboot", "--end-session"}, logger, logFile)
+
+	// Clean up the packages/.tmp directory
+	if config.Workdir != "" {
+		packages.CleanupTempDir(config.Workdir)
+	}
 
 	return nil
 }
@@ -248,6 +263,7 @@ func GenerateLauncher(config InstallConfig, logger *core.Logger) error {
 		GPUType:            config.GPUType,
 		IconPath:           iconPath,
 		LauncherBinaryPath: config.LauncherBinaryPath,
+		UseProtonForAMD:    config.UseProtonForAMD,
 	}
 
 	if err := launchers.GenerateLauncher(launcherConfig, logger); err != nil {
@@ -255,13 +271,6 @@ func GenerateLauncher(config InstallConfig, logger *core.Logger) error {
 	}
 
 	logger.Info(fmt.Sprintf("[OK] Game launcher installed: %s", config.LauncherBinaryPath))
-
-	// Generate launch vars file
-	if config.GPUType == "NVIDIA" {
-		launchers.GenerateLaunchVarsFileNvidia(config.WINEPREFIX)
-	} else if config.GPUType == "AMD" {
-		launchers.GenerateLaunchVarsAMD(config.WINEPREFIX, config.IsFSR41)
-	}
 
 	return nil
 }

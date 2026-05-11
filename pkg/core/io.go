@@ -1,10 +1,8 @@
 package core
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -40,6 +38,7 @@ func RunCommand(mode RunMode, args []string, logger *Logger, logPath string) err
 		var err error
 		logFile, err = os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to open log file %s: %v\n", logPath, err)
 			return fmt.Errorf("failed to open log file: %w", err)
 		}
 		defer logFile.Close()
@@ -156,85 +155,4 @@ func LookPath(name string) string {
 		return ""
 	}
 	return path
-}
-
-// cmdStreamLine formats a command output line with ANSI styling
-func cmdStreamLine(line string, width int, pad int, bg string, fg string) string {
-	if width <= 0 {
-		return ""
-	}
-
-	if len(line) <= width {
-		return fmt.Sprintf("%*s%-*.*s%*s", pad, "", width-pad, width-pad, line, pad, "")
-	}
-
-	// Truncate line
-	max := width - pad - pad
-	if max <= 3 {
-		return fmt.Sprintf("%*s%s%*s", pad, "", line[:max], pad, "")
-	}
-	return fmt.Sprintf("%*s%-*.*s%*s", pad, "", max, max, line[:max-3]+"...", pad, "")
-}
-
-// runCommandStream executes a command and streams output line by line to both console and log file
-// This mirrors the bash cmd_streamer function behavior
-func runCommandStream(args []string, logger *Logger, logPath string) error {
-	if len(args) == 0 {
-		return nil
-	}
-
-	cmd := exec.Command(args[0], args[1:]...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-
-	// Open log file
-	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open log file: %w", err)
-	}
-	defer logFile.Close()
-
-	fmt.Fprintln(logFile, "--- Command Output Start ---")
-
-	// Channel to merge stdout and stderr
-	outputChan := make(chan string)
-
-	// Helper to read from a pipe and send to channel
-	readPipe := func(pipe io.Reader, ch chan<- string) {
-		scanner := bufio.NewScanner(pipe)
-		for scanner.Scan() {
-			ch <- scanner.Text()
-		}
-	}
-
-	// Start goroutines to read stdout and stderr
-	go readPipe(stdout, outputChan)
-	go readPipe(stderr, outputChan)
-
-	// Read and process output
-	var cmdErr error
-	for {
-		line, ok := <-outputChan
-		if !ok {
-			// Both channels closed
-			break
-		}
-		// Log to file
-		fmt.Fprintln(logFile, line)
-		// Log to console
-		fmt.Println(line)
-	}
-
-	// Wait for command to complete
-	if err := cmd.Wait(); err != nil {
-		cmdErr = err
-	}
-
-	return cmdErr
 }
