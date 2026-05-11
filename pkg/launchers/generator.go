@@ -290,7 +290,10 @@ Path=%s
 
 	// Copy to ~/Desktop/
 	desktopDest := filepath.Join(homeDir, "Desktop", fmt.Sprintf("%s.desktop", entryName))
-	if _, err := os.Stat(filepath.Join(homeDir, "Desktop")); err == nil {
+	desktopDir := filepath.Join(homeDir, "Desktop")
+	if err := os.MkdirAll(desktopDir, 0755); err != nil {
+		logger.Warn(fmt.Sprintf("Failed to create desktop directory: %v", err))
+	} else {
 		if err := copyFile(desktopFile, desktopDest); err != nil {
 			logger.Warn(fmt.Sprintf("Failed to copy desktop file to desktop: %v", err))
 		} else {
