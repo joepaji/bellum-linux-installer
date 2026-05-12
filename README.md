@@ -65,14 +65,17 @@ export WINEPREFIX=/path/to/wineprefix
 
 ### Option 1 - Desktop Shortcut
 This guy will be added to your Desktop once install is complete:
+
 <img width="106" height="117" alt="image" src="https://github.com/user-attachments/assets/1305bf0b-994f-4726-a75f-64e5f5bbac7e" />
 
 ### Option 2 - Application Menu
 This guy will be added under the **Games** category in your Application Menu:
+
 <img width="537" height="67" alt="image" src="https://github.com/user-attachments/assets/d6acdfed-7569-415d-8e42-dac896d7bce9" />
 
 ### Option 3 - Terminaal
 Just open a terminal anywhere, and run the `Bellum` command.
+
 <img width="800" alt="image" src="https://github.com/user-attachments/assets/e24b60bc-7aaa-4fc8-99ff-26ed24fbe7e7" />
 
 ## Uninstallation
