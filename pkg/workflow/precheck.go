@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
-	"time"
 
 	"bellum-installer/pkg/config"
 	"bellum-installer/pkg/core"
@@ -27,6 +25,8 @@ type PrecheckResult struct {
 	ProtonPath        string
 	WinetricksPath    string
 	WinetricksTmpDir  string
+	WineVer           string
+	WineBinPath       string
 }
 
 // ValidateWINEPREFIX validates the WINEPREFIX path
@@ -154,7 +154,6 @@ func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	fmt.Println()
 	logger.Info("Select the directory where you want to install Bellum...")
 	logger.Info("This will create a new WINEPREFIX named 'Bellum' in the selected location.")
-	time.Sleep(2 * time.Second)
 
 	result, err := gui.PickDirectory("")
 	if err != nil {
@@ -194,55 +193,17 @@ func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	return wineprefixPath, nil
 }
 
-// CheckRequiredWineBinaries checks if all required Wine binaries are present
-func CheckRequiredWineBinaries(logger *core.Logger) error {
-	requiredBinaries := []string{
-		config.DefaultVersions.Binaries.Wine,
-		config.DefaultVersions.Binaries.Wineboot,
-		config.DefaultVersions.Binaries.Msidb,
-		config.DefaultVersions.Binaries.Winecfg,
-		config.DefaultVersions.Binaries.Wineserver,
+// CheckWinePackage ensures Wine package is downloaded and available
+func CheckWinePackage(logger *core.Logger) (string, string, error) {
+	wineVer := config.DefaultVersions.WineVer
+
+	wineDir, err := packages.EnsureWine(wineVer, logger)
+	if err != nil {
+		return "", "", err
 	}
 
-	var missing []string
-	for _, binary := range requiredBinaries {
-		if _, err := os.Stat(binary); os.IsNotExist(err) {
-			missing = append(missing, binary)
-		}
-	}
-
-	if len(missing) > 0 {
-		var msg string
-		for _, binary := range missing {
-			msg += fmt.Sprintf("  - %s\n", binary)
-		}
-		return core.LogAndReturn(fmt.Errorf("missing Wine binaries: %s", strings.TrimSpace(msg)), core.ErrorLevelCritical, logger)
-	}
-
-	logger.Info("[OK] All required Wine binaries found")
-	return nil
-}
-
-// CheckWineVersion verifies Wine version matches requirements
-func CheckWineVersion(logger *core.Logger, force bool) error {
-	installedWine := getWineVersion(logger)
-	requiredWine := strings.TrimPrefix(config.DefaultVersions.WineVer, "wine-")
-
-	if installedWine == "" {
-		return fmt.Errorf("Wine binary not found in PATH")
-	}
-
-	if installedWine != requiredWine {
-		if !force {
-			return fmt.Errorf("wine version mismatch: installed %s, required %s", installedWine, requiredWine)
-		}
-		logger.Warn(fmt.Sprintf("Wine version mismatch. Installed: wine-%s, Required: %s", installedWine, requiredWine))
-		logger.Warn("Proceeding with wine-1.0 due to --force-wine-version flag (not recommended)")
-	} else {
-		logger.Info(fmt.Sprintf("[OK] Wine %s stable found", requiredWine))
-	}
-
-	return nil
+	wineBinPath := packages.GetWineBinPath(wineDir)
+	return wineVer, wineBinPath, nil
 }
 
 // CheckUMURun verifies umu-run is available
@@ -301,7 +262,7 @@ func CheckWinetricks(workdir string, logger *core.Logger) (string, string, error
 			return "", "", fmt.Errorf("winetricks binary not found in extracted directory")
 		}
 	}
-	core.RunCommand(core.RunModeSilent, []string{winetricksBinary, "--self-update"}, logger, "")
+	core.RunCommand(core.RunModeSilent, []string{winetricksBinary, "--self-update"}, logger, "", nil, nil)
 	logger.Info(fmt.Sprintf("Using winetricks from: %s", winetricksBinary))
 	return winetricksBinary, tmpDir, nil
 }
@@ -362,13 +323,9 @@ func RunPrechecks(wineprefixArg string, launcherInstallerPath string, forceWineV
 		return nil, err
 	}
 
-	// Check Wine binaries
-	if err := CheckRequiredWineBinaries(logger); err != nil {
-		return nil, err
-	}
-
-	// Check Wine version
-	if err := CheckWineVersion(logger, forceWineVersion); err != nil {
+	// Check Wine package (download and extract packaged Wine)
+	wineVer, wineBinPath, err := CheckWinePackage(logger)
+	if err != nil {
 		return nil, err
 	}
 
@@ -426,6 +383,8 @@ func RunPrechecks(wineprefixArg string, launcherInstallerPath string, forceWineV
 		LauncherInstaller: launcherInstallerPath,
 		WinetricksPath:    winetricksPath,
 		WinetricksTmpDir:  winetricksTmpDir,
+		WineVer:           wineVer,
+		WineBinPath:       wineBinPath,
 	}, nil
 }
 
@@ -435,14 +394,15 @@ func RunPrechecks(wineprefixArg string, launcherInstallerPath string, forceWineV
 // Uses lsblk to check rotational status, falling back to device name detection.
 func isSSD(path string, logger *core.Logger) bool {
 	// Try lsblk first
-	if output, err := core.RunCommandWithOutput([]string{"lsblk", "-no", "rota", filepath.Dir(path)}); err == nil {
+	var output string
+	if err := core.RunCommand(core.RunModeCapture, []string{"lsblk", "-no", "rota", filepath.Dir(path)}, nil, "", nil, &output); err == nil {
 		rotational := strings.TrimSpace(output)
 		return rotational == "0"
 	}
 
 	// Fallback to checking device name
-	device, err := core.RunCommandWithOutput([]string{"df", "-P", path})
-	if err != nil {
+	var device string
+	if err := core.RunCommand(core.RunModeCapture, []string{"df", "-P", path}, nil, "", nil, &device); err != nil {
 		return false
 	}
 
@@ -457,28 +417,4 @@ func isSSD(path string, logger *core.Logger) bool {
 	}
 
 	return false
-}
-
-// getWineVersion retrieves the installed Wine version by running wine --version.
-// Returns the version string (e.g., "1.0") or an empty string if detection fails.
-func getWineVersion(logger *core.Logger) string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	defaultPfx := filepath.Join(homeDir, ".wine")
-	os.Setenv("WINEPREFIX", defaultPfx)
-	output, err := core.RunCommandWithOutput([]string{"wine", "--version"})
-	if err != nil {
-		return ""
-	}
-
-	// Extract version number using regex
-	versionRegex := regexp.MustCompile(`wine-([0-9.]+)`)
-	match := versionRegex.FindStringSubmatch(output)
-	if len(match) >= 2 {
-		return match[1]
-	}
-
-	return ""
 }

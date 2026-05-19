@@ -18,19 +18,26 @@ const (
 	RunModeLog
 	// RunModeStream streams output to console (via logger) and logs to file
 	RunModeStream
+	// RunModeCapture captures output and returns it via output parameter
+	RunModeCapture
 )
 
 // RunCommand executes a command with the specified output handling mode.
-// mode: RunModeSilent (no console), RunModeLog (log command, silent output), RunModeStream (stream to console)
+// mode: RunModeSilent (no console), RunModeLog (log command, silent output), RunModeStream (stream to console), RunModeCapture (capture output)
 // args: command and its arguments (first element is the command)
 // logger: logger for command logging and output formatting
 // logPath: path to the log file for raw output capture (if empty, logging is skipped)
-func RunCommand(mode RunMode, args []string, logger *Logger, logPath string) error {
+// env: optional environment variables to set (nil = use os.Environ)
+// output: optional pointer to string to receive captured output (only used with RunModeCapture, can be nil)
+func RunCommand(mode RunMode, args []string, logger *Logger, logPath string, env []string, output *string) error {
 	if len(args) == 0 {
 		return nil
 	}
 
 	cmd := exec.Command(args[0], args[1:]...)
+	if len(env) > 0 {
+		cmd.Env = append([]string(nil), env...)
+	}
 
 	// If no log path is provided, use os.DevNull for file operations
 	var logFile *os.File
@@ -107,9 +114,9 @@ func RunCommand(mode RunMode, args []string, logger *Logger, logPath string) err
 
 		err := cmd.Run()
 
-		output := buf.String()
-		if output != "" {
-			lines := splitLines(output, 125)
+		streamOutput := buf.String()
+		if streamOutput != "" {
+			lines := splitLines(streamOutput, 125)
 			for _, line := range lines {
 				if logFile != nil {
 					fmt.Fprintln(logFile, line)
@@ -127,25 +134,26 @@ func RunCommand(mode RunMode, args []string, logger *Logger, logPath string) err
 			return err
 		}
 		return nil
+
+	case RunModeCapture:
+		// Capture: capture combined output and return it via output parameter
+		var buf bytes.Buffer
+		cmd.Stdout = &buf
+		cmd.Stderr = &buf
+
+		err := cmd.Run()
+
+		captured := strings.TrimSpace(buf.String())
+		if output != nil {
+			*output = captured
+		}
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 
 	return nil
-}
-
-// RunCommandWithOutput executes a command and returns its output.
-// Useful for commands where output needs to be captured and processed.
-func RunCommandWithOutput(args []string) (string, error) {
-	if len(args) == 0 {
-		return "", nil
-	}
-
-	cmd := exec.Command(args[0], args[1:]...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(output)), nil
 }
 
 // LookPath checks if a command is available in PATH

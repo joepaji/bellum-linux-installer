@@ -23,20 +23,21 @@ type Versions struct {
 }
 
 // DefaultVersions contains the version configuration
+// Wine Binaries are set later after installing to `~/.local/share/bellum/`
 var DefaultVersions = Versions{
 	Workdir:       ".",
 	ProtonVer:     "proton-cachyos-10.0-20260424-slr-x86_64",
 	ProtonBaseURL: "https://github.com/CachyOS/proton-cachyos/releases/download",
-	WineVer:       "wine-11.0",
+	WineVer:       "bellum-wine-11.8",
 	WinetricksVer: "20250102-modified",
 	DXVKVer:       "2.7.1-3-521-low-latency",
 	VKD3DVer:      "2.14",
 	FSRPath:       "packages/fsr4",
 	Binaries: Binaries{
-		Wine:       "/usr/bin/wine",
-		Wineboot:   "/usr/bin/wineboot",
-		Msidb:      "/usr/bin/msidb",
-		Winecfg:    "/usr/bin/winecfg",
-		Wineserver: "/usr/bin/wineserver",
+		Wine:       "",
+		Wineboot:   "",
+		Msidb:      "",
+		Winecfg:    "",
+		Wineserver: "",
 	},
 }

@@ -133,6 +133,7 @@ func main() {
 		LauncherBinaryPath: config.LauncherBinaryPath,
 		WinetricksPath:     result.WinetricksPath,
 		UseProtonForAMD:    *useProtonForAMD,
+		WineBinPath:        result.WineBinPath,
 	}
 
 	// Run FSR4.1 upgrade DLL copy before installation if --fsr41 flag is passed
@@ -144,6 +145,12 @@ func main() {
 		}
 	}
 
+	// Scope wine: prepend packaged wine bin to PATH and update LD_LIBRARY_PATH
+	// so all wine commands during the installer lifecycle use the packaged version.
+	scoped := core.NewScopedWine(result.WineBinPath)
+	scoped.Apply()
+	defer scoped.Restore()
+
 	// Run installation
 	logger.Info("Starting installation phase...")
 	if err := workflow.RunInstaller(installConfig, logger); err != nil {
@@ -153,12 +160,13 @@ func main() {
 
 	// Run configuration
 	configureConfig := workflow.ConfigureConfig{
-		WINEPREFIX: result.WINEPREFIX,
-		ProtonPath: result.ProtonPath,
-		GPUType:    result.GPUType,
-		IsAMDGPU:   result.IsAMDGPU,
-		Workdir:    workdir,
-		IsFSR41:    *fsr41,
+		WINEPREFIX:  result.WINEPREFIX,
+		ProtonPath:  result.ProtonPath,
+		GPUType:     result.GPUType,
+		IsAMDGPU:    result.IsAMDGPU,
+		Workdir:     workdir,
+		IsFSR41:     *fsr41,
+		WineBinPath: result.WineBinPath,
 	}
 
 	if err := workflow.RunConfiguration(configureConfig, logger); err != nil {
