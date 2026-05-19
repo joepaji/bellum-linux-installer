@@ -54,7 +54,7 @@ func DownloadLauncherInstaller(workdir string, logger *core.Logger) (*LauncherIn
 	if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
-	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, launcherInstallerURL}, logger, logFile); err != nil {
+	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, launcherInstallerURL}, logger, logFile, nil, nil); err != nil {
 		return nil, core.LogAndReturn(fmt.Errorf("failed to download launcher installer: %w", err), core.ErrorLevelCritical, logger)
 	}
 
@@ -114,6 +114,100 @@ func GetProtonInstallPath(protonVer string) (string, error) {
 		return "", fmt.Errorf("unable to determine home directory")
 	}
 	return filepath.Join(homeDir, ".local", "share", "bellum", "proton", fmt.Sprintf("bellum-%s", protonVer)), nil
+}
+
+// GetWineInstallPath returns the path to the Wine install directory
+func GetWineInstallPath(wineVer string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = os.Getenv("HOME")
+	}
+	if homeDir == "" {
+		return "", fmt.Errorf("unable to determine home directory")
+	}
+	return filepath.Join(homeDir, ".local", "share", "bellum", wineVer), nil
+}
+
+// GetWineBinPath returns the path to the Wine bin directory
+func GetWineBinPath(wineDir string) string {
+	return filepath.Join(wineDir, "bin")
+}
+
+// GetWineURL returns the download URL for Wine based on the version
+func GetWineURL(wineVer string) string {
+	// Use the full version string directly (e.g., "bellum-wine-11.8.tar.gz")
+	return fmt.Sprintf("https://github.com/joepaji/bellum-linux-installer/releases/download/winepkg/%s.tar.gz", wineVer)
+}
+
+// EnsureWine downloads and sets up the Wine directory
+func EnsureWine(wineVer string, logger *core.Logger) (string, error) {
+	wineURL := GetWineURL(wineVer)
+
+	// Get the actual wine install path
+	wineDir, err := GetWineInstallPath(wineVer)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if wine directory exists
+	dirExists := true
+	if _, err := os.Stat(wineDir); os.IsNotExist(err) {
+		dirExists = false
+	}
+
+	if !dirExists {
+		archivePath := ""
+		tmpDir := ""
+
+		// Check for WINE_PKG_OVERRIDE env var (dev/debug only, not exposed to end users)
+		overridePath := os.Getenv("WINE_PKG_OVERRIDE")
+		if overridePath != "" {
+			logger.Info(fmt.Sprintf("Using Wine package from WINE_PKG_OVERRIDE: %s", overridePath))
+			if _, err := os.Stat(overridePath); os.IsNotExist(err) {
+				return "", fmt.Errorf("Wine package override file not found: %s", overridePath)
+			}
+			archivePath = overridePath
+		} else {
+			logger.Info("Wine directory not found, downloading...")
+
+			tmpDir, err = os.MkdirTemp("", "wine.")
+			if err != nil {
+				return "", fmt.Errorf("failed to create temp directory for Wine download: %w", err)
+			}
+			defer os.RemoveAll(tmpDir)
+
+			archivePath = filepath.Join(tmpDir, fmt.Sprintf("%s.tar.gz", wineVer))
+			if err := downloadFile(archivePath, wineURL, logger); err != nil {
+				return "", err
+			}
+		}
+
+		if archivePath != "" {
+			if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+				return "", fmt.Errorf("archive file not found: %s", archivePath)
+			}
+
+			logger.Info(fmt.Sprintf("Extracting Wine to %s...", wineDir))
+			if err := os.MkdirAll(wineDir, 0755); err != nil {
+				return "", fmt.Errorf("failed to create Wine directory: %w", err)
+			}
+
+			// Extract tar.gz (strip one level - the archive root directory)
+			if err := ExtractPackageTo(archivePath, wineDir, 1); err != nil {
+				os.RemoveAll(wineDir)
+				return "", fmt.Errorf("failed to extract Wine: %w", err)
+			}
+
+			// Only remove the archive if it was downloaded (not from override)
+			if overridePath == "" {
+				if err := os.Remove(archivePath); err != nil {
+					logger.Warn(fmt.Sprintf("Failed to remove Wine archive: %v", err))
+				}
+			}
+		}
+	}
+
+	return wineDir, nil
 }
 
 // EnsureProton downloads and sets up the Proton directory
@@ -258,7 +352,7 @@ func downloadFile(dest, url string, logger *core.Logger) error {
 	if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
-	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, url}, logger, logFile); err != nil {
+	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, url}, logger, logFile, nil, nil); err != nil {
 		return core.LogAndReturn(fmt.Errorf("failed to download %s: %w", url, err), core.ErrorLevelCritical, logger)
 	}
 

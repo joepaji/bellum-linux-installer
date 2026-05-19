@@ -24,7 +24,7 @@ func PrintInstallerSummary(protonVer, wineVer, winetricksVer, vkd3dVer, dxvkVer,
 
 	// Print version information
 	fmt.Printf("%s   Proton Version%s:   %s%s%s%s\n", ColorBoldCyan, ColorReset, ColorBold, protonVer, ColorReset, ColorReset)
-	fmt.Printf("%s     Wine Version%s:   %s%s%s%s (Stable)\n", ColorBoldCyan, ColorReset, ColorBold, wineVer, ColorReset, ColorReset)
+	fmt.Printf("%s     Wine Version%s:   %s%s%s%s\n", ColorBoldCyan, ColorReset, ColorBold, wineVer, ColorReset, ColorReset)
 	fmt.Printf("%s   Winetricks Ver%s:   %s%s%s%s\n", ColorBoldCyan, ColorReset, ColorBold, winetricksVer, ColorReset, ColorReset)
 	fmt.Printf("%s        VKD3D Ver%s:   %s%s%s%s\n", ColorBoldCyan, ColorReset, ColorBold, vkd3dVer, ColorReset, ColorReset)
 	fmt.Printf("%s         DXVK Ver%s:   %s%s%s%s\n\n", ColorBoldCyan, ColorReset, ColorBold, dxvkVer, ColorReset, ColorReset)

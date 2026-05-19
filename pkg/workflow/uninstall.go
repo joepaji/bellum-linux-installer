@@ -69,6 +69,11 @@ func RunUninstallation(config UninstallConfig, logger *core.Logger) error {
 		return err
 	}
 
+	// Remove Wine package
+	if err := removeWinePackage(logger); err != nil {
+		return err
+	}
+
 	// Remove WINEPREFIX if it exists
 	if wineprefixExists {
 		if err := removeWINEPREFIX(config.WINEPREFIX, logger); err != nil {
@@ -111,7 +116,7 @@ func removeLauncherBinaries(gpuType string, logger *core.Logger) error {
 // removeWithSudo uses pkexec to remove a file with elevated privileges.
 func removeWithSudo(path string, logger *core.Logger) error {
 	cmd := []string{"pkexec", "rm", path}
-	if err := core.RunCommand(core.RunModeSilent, cmd, logger, ""); err != nil {
+	if err := core.RunCommand(core.RunModeSilent, cmd, logger, "", nil, nil); err != nil {
 		return fmt.Errorf("failed to remove %s with pkexec: %w", path, err)
 	}
 	return nil
@@ -144,7 +149,7 @@ func removeDesktopEntries(gpuType string, logger *core.Logger) error {
 
 	userAppsDir := filepath.Join(homeDir, config.UserApplicationsDir)
 	if _, err := os.Stat(userAppsDir); err == nil {
-		core.RunCommand(core.RunModeSilent, []string{"update-desktop-database", userAppsDir}, logger, "")
+		core.RunCommand(core.RunModeSilent, []string{"update-desktop-database", userAppsDir}, logger, "", nil, nil)
 	}
 
 	return nil
@@ -197,6 +202,34 @@ func removeProton(wineprefix string, gpuType string, logger *core.Logger) error 
 
 	// Check if the bellum directory is now empty and remove it silently
 	bellumDir := filepath.Join(filepath.Dir(filepath.Dir(protonParentDir)))
+	if core.IsEmptyDir(bellumDir) {
+		os.RemoveAll(bellumDir)
+	}
+
+	return nil
+}
+
+// removeWinePackage removes the packaged Wine directory
+func removeWinePackage(logger *core.Logger) error {
+	logger.Info("Removing Wine package...")
+
+	wineVer := config.DefaultVersions.WineVer
+	wineDir, err := packages.GetWineInstallPath(wineVer)
+	if err != nil {
+		logger.Warn(fmt.Sprintf("Failed to get Wine install path: %v", err))
+		return nil
+	}
+
+	if _, err := os.Stat(wineDir); err == nil {
+		logger.Info(fmt.Sprintf("Removing Wine directory: %s", wineDir))
+		if err := os.RemoveAll(wineDir); err != nil {
+			return fmt.Errorf("failed to remove Wine directory %s: %w", wineDir, err)
+		}
+		logger.Info("[OK] Removed Wine directory")
+	}
+
+	// Check if the bellum directory is now empty and remove it silently
+	bellumDir := filepath.Join(filepath.Dir(wineDir))
 	if core.IsEmptyDir(bellumDir) {
 		os.RemoveAll(bellumDir)
 	}

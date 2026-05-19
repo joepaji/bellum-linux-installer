@@ -5,19 +5,19 @@ import (
 	"os"
 	"path/filepath"
 
-	cfg "bellum-installer/pkg/config"
 	"bellum-installer/pkg/core"
 	"bellum-installer/pkg/launchers"
 )
 
 // ConfigureConfig holds configuration for post-install configuration
 type ConfigureConfig struct {
-	WINEPREFIX string
-	ProtonPath string
-	GPUType    string
-	IsAMDGPU   bool
-	Workdir    string
-	IsFSR41    bool
+	WINEPREFIX  string
+	ProtonPath  string
+	GPUType     string
+	IsAMDGPU    bool
+	Workdir     string
+	IsFSR41     bool
+	WineBinPath string
 }
 
 // RunConfiguration runs the post-install configuration phase
@@ -26,7 +26,7 @@ func RunConfiguration(config ConfigureConfig, logger *core.Logger) error {
 	logger.Info("Starting configuration phase...")
 
 	// Update DLL overrides
-	if err := UpdateDLLs(logger); err != nil {
+	if err := UpdateDLLs(config, logger); err != nil {
 		return err
 	}
 
@@ -57,10 +57,10 @@ func RunConfiguration(config ConfigureConfig, logger *core.Logger) error {
 }
 
 // UpdateDLLs sets up DLL overrides for the WINEPREFIX
-func UpdateDLLs(logger *core.Logger) error {
+func UpdateDLLs(config ConfigureConfig, logger *core.Logger) error {
 	logger.Info("Setting DLL overrides")
 
-	wine := cfg.DefaultVersions.Binaries.Wine
+	wineBin := filepath.Join(config.WineBinPath, "wine")
 	logFile := ""
 
 	// System-wide overrides
@@ -73,7 +73,7 @@ func UpdateDLLs(logger *core.Logger) error {
 	}
 
 	for _, dll := range systemDLLs {
-		if err := core.RunCommand(core.RunModeSilent, []string{wine, "reg", "add", `HKEY_CURRENT_USER\Software\Wine\DllOverrides`, "/v", dll, "/d", "native,builtin", "/f"}, logger, logFile); err != nil {
+		if err := core.RunCommand(core.RunModeSilent, []string{wineBin, "reg", "add", `HKEY_CURRENT_USER\Software\Wine\DllOverrides`, "/v", dll, "/d", "native,builtin", "/f"}, logger, logFile, nil, nil); err != nil {
 			return err
 		}
 	}
@@ -83,12 +83,12 @@ func UpdateDLLs(logger *core.Logger) error {
 
 	for _, dll := range appDLLs {
 		// Launcher overrides
-		if err := core.RunCommand(core.RunModeSilent, []string{wine, "reg", "add", `HKCU\Software\Wine\AppDefaults\AstarteLauncher.exe\DllOverrides`, "/v", dll, "/d", "builtin", "/f"}, logger, logFile); err != nil {
+		if err := core.RunCommand(core.RunModeSilent, []string{wineBin, "reg", "add", `HKCU\Software\Wine\AppDefaults\AstarteLauncher.exe\DllOverrides`, "/v", dll, "/d", "builtin", "/f"}, logger, logFile, nil, nil); err != nil {
 			return err
 		}
 
 		// Game overrides
-		if err := core.RunCommand(core.RunModeSilent, []string{wine, "reg", "add", `HKCU\Software\Wine\AppDefaults\Bellum-Win64-Shipping.exe\DllOverrides`, "/v", dll, "/d", "native", "/f"}, logger, logFile); err != nil {
+		if err := core.RunCommand(core.RunModeSilent, []string{wineBin, "reg", "add", `HKCU\Software\Wine\AppDefaults\Bellum-Win64-Shipping.exe\DllOverrides`, "/v", dll, "/d", "native", "/f"}, logger, logFile, nil, nil); err != nil {
 			return err
 		}
 	}
@@ -126,7 +126,7 @@ func UpgradeFSR(config ConfigureConfig, logger *core.Logger) error {
 	logFile := filepath.Join(config.Workdir, "logs", "installer.log")
 
 	// Create target directories
-	core.RunCommand(core.RunModeSilent, []string{"mkdir", "-p", fgTargetDir, d3dTargetDir}, logger, logFile)
+	core.RunCommand(core.RunModeSilent, []string{"mkdir", "-p", fgTargetDir, d3dTargetDir}, logger, logFile, nil, nil)
 
 	// Copy FSR DLLs
 	if _, err := os.Stat(fgSource); err == nil {
@@ -146,7 +146,8 @@ func UpgradeFSR(config ConfigureConfig, logger *core.Logger) error {
 	}
 
 	// Register DLL override for amdxcffx64
-	core.RunCommand(core.RunModeSilent, []string{cfg.DefaultVersions.Binaries.Wine, "reg", "add", `HKEY_CURRENT_USER\Software\Wine\DllOverrides`, "/v", "amdxcffx64", "/d", "native", "/f"}, logger, "")
+	wineBin := filepath.Join(config.WineBinPath, "wine")
+	core.RunCommand(core.RunModeSilent, []string{wineBin, "reg", "add", `HKEY_CURRENT_USER\Software\Wine\DllOverrides`, "/v", "amdxcffx64", "/d", "native", "/f"}, logger, "", nil, nil)
 
 	logger.Info("FSR 4.1.0 Upgrade Complete!")
 	return nil

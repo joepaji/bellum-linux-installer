@@ -7,7 +7,8 @@ import (
 // DetectGPU detects the GPU type using glxinfo
 // Returns the GPU type (e.g., "NVIDIA", "AMD", "Intel") or an error if detection fails
 func DetectGPU() (string, error) {
-	output, err := RunCommandWithOutput([]string{"glxinfo", "-B"})
+	var output string
+	err := RunCommand(RunModeCapture, []string{"glxinfo", "-B"}, nil, "", nil, &output)
 	if err != nil {
 		return "", err
 	}
