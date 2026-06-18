@@ -348,18 +348,12 @@ Path=%s
 		}
 	}
 
-	if err := runGioSet(desktopFile, "metadata::trusted", "true", logger); err != nil {
-		logger.Warn(fmt.Sprintf("Failed to mark desktop file as trusted: %v", err))
-	}
+	runGioSet(desktopFile, "metadata::trusted", "true", logger)
 	if _, err := os.Stat(desktopDest); err == nil {
-		if err := runGioSet(desktopDest, "metadata::trusted", "true", logger); err != nil {
-			logger.Warn(fmt.Sprintf("Failed to mark desktop shortcut as trusted: %v", err))
-		}
+		runGioSet(desktopDest, "metadata::trusted", "true", logger)
 	}
 
-	if err := runUpdateDesktopDatabase(appsDir, logger); err != nil {
-		logger.Warn(fmt.Sprintf("Failed to update desktop database: %v", err))
-	}
+	runUpdateDesktopDatabase(appsDir, logger)
 
 	return nil
 }
