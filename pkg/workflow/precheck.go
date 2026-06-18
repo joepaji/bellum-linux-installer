@@ -91,9 +91,9 @@ func ValidateWINEPREFIX(wineprefixArg string, logger *core.Logger) (string, stri
 			return "", "", false, fmt.Errorf("directory selection cancelled or failed: %v", result.Error)
 		}
 
-		// WINEPREFIX is the same as INSTALL_DIR
+		// Resolve the final WINEPREFIX path from the selected directory
 		selectedPath := strings.TrimSuffix(result.Path, "/")
-		WINEPREFIX = selectedPath
+		WINEPREFIX = gui.ResolveInstallPath(selectedPath)
 		WINEPREFIXSource = "GUI picker"
 
 		logger.Info(fmt.Sprintf("WINEPREFIX: %s%s%s", core.ColorBoldYellow, WINEPREFIX, core.ColorReset))
@@ -154,7 +154,7 @@ func ValidateWINEPREFIX(wineprefixArg string, logger *core.Logger) (string, stri
 }
 
 // SelectInstallDir prompts the user to select an installation directory using GUI picker
-// Returns the selected install directory path (which is also the WINEPREFIX)
+// Creates a "Bellum" subdirectory inside the picked directory and returns it as the install path
 func SelectInstallDir(logger *core.Logger) (string, error) {
 	fmt.Println()
 	logger.Info("Select the directory where you want to install Bellum...")
@@ -172,6 +172,9 @@ func SelectInstallDir(logger *core.Logger) (string, error) {
 	logger.Info(fmt.Sprintf("Selected installation directory: %s", core.Colorize(selectedPath, core.ColorBoldYellow)))
 	fmt.Println()
 
+	// Resolve the final install path (creates Bellum subdirectory if needed)
+	installDir := gui.ResolveInstallPath(selectedPath)
+
 	// Validate the selected directory
 	valid, errMsg := gui.ValidateDirectory(selectedPath, logger)
 	if !valid {
@@ -181,24 +184,24 @@ func SelectInstallDir(logger *core.Logger) (string, error) {
 	logger.Info("[OK] Directory validation passed")
 	fmt.Println()
 
-	// Create the directory if it doesn't exist
-	if !core.IsDir(selectedPath) {
-		logger.Info(fmt.Sprintf("Creating directory at %s...", selectedPath))
-		if err := os.MkdirAll(selectedPath, 0755); err != nil {
-			return "", fmt.Errorf("failed to create directory %s: %w", selectedPath, err)
+	// Create the install directory if it doesn't exist
+	if !core.IsDir(installDir) {
+		logger.Info(fmt.Sprintf("Creating directory at %s...", installDir))
+		if err := os.MkdirAll(installDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create directory %s: %w", installDir, err)
 		}
 		logger.Info("[OK] Directory created successfully")
 		fmt.Println()
 	}
 
-	return selectedPath, nil
+	return installDir, nil
 }
 
 // ValidateWINEPREFIXWithGUI prompts user to select a directory using GUI picker and validates it
 // This function handles the complete workflow of:
 // 1. Opening GUI directory picker
 // 2. Validating the selected directory
-// 3. Creating the directory
+// 3. Creating the Bellum subdirectory
 // Returns the WINEPREFIX path (which is the same as INSTALL_DIR)
 func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	// Open GUI directory picker
@@ -218,11 +221,11 @@ func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	logger.Info(fmt.Sprintf("Selected directory: %s", core.Colorize(selectedPath, core.ColorBoldYellow)))
 	fmt.Println()
 
-	// WINEPREFIX is the same as the selected directory
-	wineprefixPath := selectedPath
+	// Resolve the final WINEPREFIX path from the selected directory
+	wineprefixPath := gui.ResolveInstallPath(selectedPath)
 
 	// Validate the selected directory
-	valid, errMsg := gui.ValidateDirectory(wineprefixPath, logger)
+	valid, errMsg := gui.ValidateDirectory(selectedPath, logger)
 	if !valid {
 		return "", fmt.Errorf("directory validation failed: %s", errMsg)
 	}
@@ -230,7 +233,7 @@ func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	logger.Info("[OK] Directory validation passed")
 	fmt.Println()
 
-	// Create the directory if it doesn't exist
+	// Create the Bellum directory if it doesn't exist
 	if !core.IsDir(wineprefixPath) {
 		logger.Info(fmt.Sprintf("Creating directory at %s...", wineprefixPath))
 		if err := os.MkdirAll(wineprefixPath, 0755); err != nil {
