@@ -207,7 +207,7 @@ func EnsureWine(wineVer string, logger *core.Logger) (string, error) {
 			archivePath = overridePath
 		} else {
 			logger.Info("Wine directory not found, downloading...")
-
+			logger.Info("This can take a few minutes...")
 			tmpDir, err = os.MkdirTemp("", "wine.")
 			if err != nil {
 				return "", fmt.Errorf("failed to create temp directory for Wine download: %w", err)
@@ -312,7 +312,7 @@ func EnsureProton(protonDir, protonVer string, isAMD bool, isFSR41 bool, logger 
 		}
 
 		logger.Info(fmt.Sprintf("Downloading Proton %s...", protonVer))
-
+		logger.Info("This can take a few minutes...")
 		tmpDir, err := os.MkdirTemp("", "proton.")
 		if err != nil {
 			return fmt.Errorf("failed to create temp directory for Proton download: %w", err)
