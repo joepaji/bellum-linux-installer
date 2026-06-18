@@ -168,6 +168,7 @@ LAUNCHER_EXE="%s"
 PROTON_WINESERVER_BIN="%s"
 PROTON_BIN="%s/proton"
 WINE_BASE_DIR="$(dirname "$PROTON_WINESERVER_BIN")"
+UPDATEFILE="%s/AstarteLauncher.exe.update"
 export LD_LIBRARY_PATH="$WINE_BASE_DIR/../lib/wine/x86_64-unix:$WINE_BASE_DIR/../lib/wine/x86_64-windows${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 load_launch_vars() {
@@ -207,6 +208,14 @@ run_launcher() {
 
   "$PROTON_BIN" run "$LAUNCHER_EXE" "$@" > "$LOG_FILE" 2>> "$LOG_FILE"
 
+  if [ -f "$UPDATEFILE" ]; then
+    mv "$UPDATEFILE" "$LAUNCHER_EXE"
+    rm -rf $UPDATEFILE
+
+		"$PROTON_WINESERVER_BIN" "-k"
+		"$PROTON_BIN" run "$LAUNCHER_EXE" "$@" > "$LOG_FILE" 2>> "$LOG_FILE"
+  fi
+
   return "$?"
 }
 
@@ -218,7 +227,7 @@ main() {
 }
 
 main "$@"
-`, gpuRole, wineprefix, wineprefix, launcherExe, wineserverPath, protonpath)
+`, gpuRole, wineprefix, wineprefix, launcherExe, wineserverPath, protonpath, wineprefix)
 }
 
 // writeWrapper writes a wrapper script to the specified path.
