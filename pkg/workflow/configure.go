@@ -11,6 +11,7 @@ import (
 
 // ConfigureConfig holds configuration for post-install configuration
 type ConfigureConfig struct {
+	InstallDir     string
 	WINEPREFIX     string
 	ProtonPath     string
 	GPUType        string
@@ -112,7 +113,7 @@ func UpgradeFSR(config ConfigureConfig, logger *core.Logger) error {
 
 	// Determine target directories
 	progFiles := `Program Files`
-	winePrefix := core.GetEnvVarOrDefault("WINEPREFIX", config.WINEPREFIX)
+	winePrefix := config.WINEPREFIX
 
 	fgTargetDir := filepath.Join(winePrefix, "drive_c", progFiles, "Astarte Industries", "Bellum", "Project_Bellum", "Plugins", "AMD", "FSR", "Source", "fidelityfx-sdk", "Kits", "FidelityFX", "signedbin")
 	d3dTargetDir := filepath.Join(winePrefix, "drive_c", progFiles, "Astarte Industries", "Bellum", "Project_Bellum", "Binaries", "Win64", "D3D12", "x64")

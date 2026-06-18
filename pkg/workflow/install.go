@@ -35,6 +35,7 @@ func validateEnvVar(name string) error {
 
 // InstallConfig holds configuration for installation
 type InstallConfig struct {
+	InstallDir         string
 	WINEPREFIX         string
 	ProtonPath         string
 	GPUType            string
@@ -140,6 +141,7 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 
 	// Set environment variables first
 	os.Setenv("PROTONPATH", config.ProtonPath)
+	os.Setenv("INSTALL_DIR", config.InstallDir)
 	os.Setenv("WINEPREFIX", config.WINEPREFIX)
 	os.Setenv("WINEARCH", "win64")
 	os.Setenv("STEAM_APP_PATH", config.WINEPREFIX)

@@ -27,7 +27,7 @@ func RunUninstallation(config UninstallConfig, logger *core.Logger) error {
 
 	// Validate WINEPREFIX
 	if config.WINEPREFIX == "" {
-		return core.LogAndReturn(fmt.Errorf("WINEPREFIX is required. Use --wineprefix <path> or set WINEPREFIX environment variable."), core.ErrorLevelCritical, logger)
+		return core.LogAndReturn(fmt.Errorf("WINEPREFIX is required. Use --wineprefix <path> or --install-dir <path>, or set WINEPREFIX/INSTALL_DIR environment variable."), core.ErrorLevelCritical, logger)
 	}
 
 	// Check if WINEPREFIX exists
@@ -71,6 +71,11 @@ func RunUninstallation(config UninstallConfig, logger *core.Logger) error {
 
 	// Remove Wine package
 	if err := removeWinePackage(logger); err != nil {
+		return err
+	}
+
+	// Remove EAC Runtime
+	if err := removeEACRuntime(logger); err != nil {
 		return err
 	}
 
@@ -232,6 +237,35 @@ func removeWinePackage(logger *core.Logger) error {
 	bellumDir := filepath.Join(filepath.Dir(wineDir))
 	if core.IsEmptyDir(bellumDir) {
 		os.RemoveAll(bellumDir)
+	}
+
+	return nil
+}
+
+// removeEACRuntime removes the EAC Runtime directory
+func removeEACRuntime(logger *core.Logger) error {
+	logger.Info("Removing EAC Runtime...")
+
+	eacDir, err := packages.GetEACRuntimeInstallPath()
+	if err != nil {
+		logger.Warn(fmt.Sprintf("Failed to get EAC Runtime install path: %v", err))
+		return nil
+	}
+
+	if _, err := os.Stat(eacDir); err == nil {
+		logger.Info(fmt.Sprintf("Removing EAC Runtime directory: %s", eacDir))
+		if err := os.RemoveAll(eacDir); err != nil {
+			return fmt.Errorf("failed to remove EAC Runtime directory %s: %w", eacDir, err)
+		}
+		logger.Info("[OK] Removed EAC Runtime directory")
+	}
+
+	// Check if the bellum directory is now empty and remove it silently
+	bellumDir, err := config.GetBellumInstallPath()
+	if err == nil {
+		if core.IsEmptyDir(bellumDir) {
+			os.RemoveAll(bellumDir)
+		}
 	}
 
 	return nil

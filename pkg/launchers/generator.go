@@ -48,11 +48,8 @@ func generateWrapperContent(config LauncherConfig) string {
 
 	switch config.GPUType {
 	case "AMD":
-		if config.UseProtonForAMD {
-			return generateProtonWrapper(config.Wineprefix, launcherExe, config.Protonpath, config.WineBinPath, "Proton")
-		} else {
-			return generateWineWrapper(config.Wineprefix, launcherExe, config.Protonpath, config.WineBinPath)
-		}
+		return generateProtonWrapper(config.Wineprefix, launcherExe, config.Protonpath, config.WineBinPath, "Proton")
+
 	case "NVIDIA":
 		return generateProtonWrapper(config.Wineprefix, launcherExe, config.Protonpath, config.WineBinPath, "NVIDIA")
 	}
@@ -213,8 +210,8 @@ run_launcher() {
     mv "$UPDATEFILE" "$LAUNCHER_EXE"
     rm -rf $UPDATEFILE
 
-		"$PROTON_WINESERVER_BIN" "-k"
-		"$PROTON_BIN" run "$LAUNCHER_EXE" "$@" > "$LOG_FILE" 2>> "$LOG_FILE"
+	  "$PROTON_WINESERVER_BIN" "-k"
+	  "$PROTON_BIN" run "$LAUNCHER_EXE" "$@" > "$LOG_FILE" 2>> "$LOG_FILE"
   fi
 
   return "$?"
@@ -545,7 +542,7 @@ func ValidateLauncherEnvironment(wineprefix string) error {
 	}
 
 	if _, err := os.Stat(wineprefix); err != nil {
-		return fmt.Errorf("WINEPREFIX not found: %s: %w", wineprefix, err)
+		return fmt.Errorf("installation directory not found: %s: %w", wineprefix, err)
 	}
 
 	return nil

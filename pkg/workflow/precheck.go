@@ -32,24 +32,21 @@ type PrecheckResult struct {
 
 // ValidateWINEPREFIX validates the WINEPREFIX path
 // Uses GUI directory picker if no argument is provided
-// The WINEPREFIX is always stored at <selectedPath>/Bellum
+// WINEPREFIX is set to the same value as INSTALL_DIR
 func ValidateWINEPREFIX(wineprefixArg string, logger *core.Logger) (string, string, bool, error) {
 	WINEPREFIX := ""
 	WINEPREFIXSource := ""
 	UseExisting := false
 
 	if wineprefixArg != "" {
-		// If user provides a path, check if it ends with "Bellum"
-		// If not, append "Bellum" to create the WINEPREFIX path
+		// If user provides a path directly, use it as the WINEPREFIX
 		WINEPREFIX = strings.TrimSuffix(wineprefixArg, "/")
-		if !strings.HasSuffix(WINEPREFIX, "Bellum") {
-			WINEPREFIX = filepath.Join(WINEPREFIX, "Bellum")
-		}
 		WINEPREFIXSource = "argument"
 		logger.Info(fmt.Sprintf("WINEPREFIX: %s%s%s", core.ColorBoldYellow, WINEPREFIX, core.ColorReset))
 	} else if envPrefix := os.Getenv("WINEPREFIX"); envPrefix != "" {
+		// Legacy: WINEPREFIX env var directly
 		WINEPREFIX = envPrefix
-		WINEPREFIXSource = "environment variable"
+		WINEPREFIXSource = "environment variable (legacy)"
 		logger.Info(fmt.Sprintf("WINEPREFIX is already set to: %s%s%s", core.ColorBoldYellow, WINEPREFIX, core.ColorReset))
 		if core.AskBool("Do you want to use this path? (Y/n): ") {
 			UseExisting = true
@@ -63,10 +60,26 @@ func ValidateWINEPREFIX(wineprefixArg string, logger *core.Logger) (string, stri
 			WINEPREFIX = strings.TrimSpace(input)
 			WINEPREFIXSource = "user input"
 		}
+	} else if envDir := os.Getenv("INSTALL_DIR"); envDir != "" {
+		// New: INSTALL_DIR env var - WINEPREFIX = INSTALL_DIR
+		WINEPREFIX = strings.TrimSuffix(envDir, "/")
+		WINEPREFIXSource = "environment variable (INSTALL_DIR)"
+		logger.Info(fmt.Sprintf("INSTALL_DIR is set to: %s%s%s", core.ColorBoldYellow, WINEPREFIX, core.ColorReset))
+		if core.AskBool("Do you want to use this path? (Y/n): ") {
+			UseExisting = true
+		} else {
+			logger.Info("Enter the desired WINEPREFIX path (e.g. /path/to/wineprefix):")
+			reader := core.NewReader()
+			input, err := reader.ReadString('\n')
+			if err != nil {
+				return "", "", false, fmt.Errorf("failed to read WINEPREFIX: %w", err)
+			}
+			WINEPREFIX = strings.TrimSpace(input)
+			WINEPREFIXSource = "user input"
+		}
 	} else {
-		// Use GUI directory picker
+		// Use GUI directory picker for INSTALL_DIR
 		logger.Info("Select the directory where you want to install Bellum...")
-		logger.Info("This will create a new WINEPREFIX named 'Bellum' in the selected location.")
 		fmt.Println()
 
 		result, err := gui.PickDirectory("")
@@ -78,9 +91,9 @@ func ValidateWINEPREFIX(wineprefixArg string, logger *core.Logger) (string, stri
 			return "", "", false, fmt.Errorf("directory selection cancelled or failed: %v", result.Error)
 		}
 
-		// The GUI picker returns the parent path, we need to append "Bellum"
+		// WINEPREFIX is the same as INSTALL_DIR
 		selectedPath := strings.TrimSuffix(result.Path, "/")
-		WINEPREFIX = filepath.Join(selectedPath, "Bellum")
+		WINEPREFIX = selectedPath
 		WINEPREFIXSource = "GUI picker"
 
 		logger.Info(fmt.Sprintf("WINEPREFIX: %s%s%s", core.ColorBoldYellow, WINEPREFIX, core.ColorReset))
@@ -104,7 +117,7 @@ func ValidateWINEPREFIX(wineprefixArg string, logger *core.Logger) (string, stri
 		return "", "", false, fmt.Errorf("WINEPREFIX path is not on a valid mounted filesystem: %s", WINEPREFIX)
 	}
 
-	// Check if WINEPREFIX exists (Bellum directory)
+	// Check if WINEPREFIX exists
 	exists := core.IsDir(WINEPREFIX)
 	wineprefixExists := false
 
@@ -115,14 +128,10 @@ func ValidateWINEPREFIX(wineprefixArg string, logger *core.Logger) (string, stri
 		}
 	}
 
-	// Directory is empty, remove it and re-download
-
 	if wineprefixExists {
-		// Check if it's a valid Bellum installation by looking for typical Bellum files
-		// If it exists but looks like an empty directory or invalid prefix, allow reinstallation
 		logger.Info(fmt.Sprintf("WINEPREFIX directory already exists at %s", WINEPREFIX))
 		logger.Warn("If you want to reinstall, please uninstall the existing installation first.")
-		return "", "", false, fmt.Errorf("WINEPREFIX directory  '%s' already exists", WINEPREFIX)
+		return "", "", false, fmt.Errorf("WINEPREFIX directory '%s' already exists", WINEPREFIX)
 	}
 
 	if !core.IsWritable(WINEPREFIXParent) {
@@ -144,17 +153,57 @@ func ValidateWINEPREFIX(wineprefixArg string, logger *core.Logger) (string, stri
 	return WINEPREFIX, WINEPREFIXSource, UseExisting, nil
 }
 
+// SelectInstallDir prompts the user to select an installation directory using GUI picker
+// Returns the selected install directory path (which is also the WINEPREFIX)
+func SelectInstallDir(logger *core.Logger) (string, error) {
+	fmt.Println()
+	logger.Info("Select the directory where you want to install Bellum...")
+
+	result, err := gui.PickDirectory("")
+	if err != nil {
+		return "", fmt.Errorf("failed to pick directory: %w", err)
+	}
+
+	if !result.Success {
+		return "", fmt.Errorf("directory selection cancelled or failed: %v", result.Error)
+	}
+
+	selectedPath := result.Path
+	logger.Info(fmt.Sprintf("Selected installation directory: %s", core.Colorize(selectedPath, core.ColorBoldYellow)))
+	fmt.Println()
+
+	// Validate the selected directory
+	valid, errMsg := gui.ValidateDirectory(selectedPath, logger)
+	if !valid {
+		return "", fmt.Errorf("directory validation failed: %s", errMsg)
+	}
+
+	logger.Info("[OK] Directory validation passed")
+	fmt.Println()
+
+	// Create the directory if it doesn't exist
+	if !core.IsDir(selectedPath) {
+		logger.Info(fmt.Sprintf("Creating directory at %s...", selectedPath))
+		if err := os.MkdirAll(selectedPath, 0755); err != nil {
+			return "", fmt.Errorf("failed to create directory %s: %w", selectedPath, err)
+		}
+		logger.Info("[OK] Directory created successfully")
+		fmt.Println()
+	}
+
+	return selectedPath, nil
+}
+
 // ValidateWINEPREFIXWithGUI prompts user to select a directory using GUI picker and validates it
 // This function handles the complete workflow of:
 // 1. Opening GUI directory picker
 // 2. Validating the selected directory
-// 3. Creating the Bellum directory inside the selected path
-// Returns the WINEPREFIX path (which is <selectedPath>/Bellum)
+// 3. Creating the directory
+// Returns the WINEPREFIX path (which is the same as INSTALL_DIR)
 func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	// Open GUI directory picker
 	fmt.Println()
 	logger.Info("Select the directory where you want to install Bellum...")
-	logger.Info("This will create a new WINEPREFIX named 'Bellum' in the selected location.")
 
 	result, err := gui.PickDirectory("")
 	if err != nil {
@@ -169,8 +218,8 @@ func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	logger.Info(fmt.Sprintf("Selected directory: %s", core.Colorize(selectedPath, core.ColorBoldYellow)))
 	fmt.Println()
 
-	// The WINEPREFIX will be created at selectedPath/Bellum
-	wineprefixPath := filepath.Join(selectedPath, "Bellum")
+	// WINEPREFIX is the same as the selected directory
+	wineprefixPath := selectedPath
 
 	// Validate the selected directory
 	valid, errMsg := gui.ValidateDirectory(wineprefixPath, logger)
@@ -181,13 +230,13 @@ func ValidateWINEPREFIXWithGUI(logger *core.Logger) (string, error) {
 	logger.Info("[OK] Directory validation passed")
 	fmt.Println()
 
-	// Create the Bellum directory if it doesn't exist
+	// Create the directory if it doesn't exist
 	if !core.IsDir(wineprefixPath) {
-		logger.Info(fmt.Sprintf("Creating Bellum directory at %s...", wineprefixPath))
+		logger.Info(fmt.Sprintf("Creating directory at %s...", wineprefixPath))
 		if err := os.MkdirAll(wineprefixPath, 0755); err != nil {
-			return "", fmt.Errorf("failed to create Bellum directory %s: %w", wineprefixPath, err)
+			return "", fmt.Errorf("failed to create directory %s: %w", wineprefixPath, err)
 		}
-		logger.Info("[OK] Bellum directory created successfully")
+		logger.Info("[OK] Directory created successfully")
 		fmt.Println()
 	}
 
