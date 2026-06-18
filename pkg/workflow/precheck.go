@@ -27,6 +27,7 @@ type PrecheckResult struct {
 	WinetricksTmpDir  string
 	WineVer           string
 	WineBinPath       string
+	EACRuntimePath    string
 }
 
 // ValidateWINEPREFIX validates the WINEPREFIX path
@@ -370,6 +371,12 @@ func RunPrechecks(wineprefixArg string, launcherInstallerPath string, forceWineV
 		return nil, err
 	}
 
+	// Check EAC Runtime
+	eacRuntimePath, err := CheckEACRuntime(workdir, logger)
+	if err != nil {
+		return nil, err
+	}
+
 	logger.Info("[OK] All prechecks passed!")
 	fmt.Println()
 
@@ -385,7 +392,22 @@ func RunPrechecks(wineprefixArg string, launcherInstallerPath string, forceWineV
 		WinetricksTmpDir:  winetricksTmpDir,
 		WineVer:           wineVer,
 		WineBinPath:       wineBinPath,
+		EACRuntimePath:    eacRuntimePath,
 	}, nil
+}
+
+// CheckEACRuntime ensures EAC Runtime is installed
+func CheckEACRuntime(workdir string, logger *core.Logger) (string, error) {
+	if err := packages.EnsureEACRuntime(workdir, logger); err != nil {
+		return "", err
+	}
+
+	path, err := packages.GetEACRuntimeInstallPath()
+	if err != nil {
+		return "", err
+	}
+
+	return path, nil
 }
 
 // Helper functions

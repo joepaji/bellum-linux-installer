@@ -1,6 +1,10 @@
 package config
 
-import "path/filepath"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
 
 // Launcher paths - centralized constants for all launcher-related file paths
 const (
@@ -37,6 +41,21 @@ const (
 	// DesktopDir is the user's Desktop directory
 	DesktopDir = "Desktop"
 )
+
+// BellumInstallDir is the relative path for the Bellum installation directory
+const BellumInstallDir = ".local/share/bellum"
+
+// GetBellumInstallPath returns the full path to the Bellum install directory
+func GetBellumInstallPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = os.Getenv("HOME")
+	}
+	if homeDir == "" {
+		return "", fmt.Errorf("unable to determine home directory")
+	}
+	return filepath.Join(homeDir, BellumInstallDir), nil
+}
 
 // LauncherPaths returns a struct containing all launcher-related paths
 type LauncherPaths struct {

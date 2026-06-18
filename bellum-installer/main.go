@@ -134,6 +134,7 @@ func main() {
 		WinetricksPath:     result.WinetricksPath,
 		UseProtonForAMD:    *useProtonForAMD,
 		WineBinPath:        result.WineBinPath,
+		EACRuntimePath:     result.EACRuntimePath,
 	}
 
 	// Run FSR4.1 upgrade DLL copy before installation if --fsr41 flag is passed
@@ -160,13 +161,14 @@ func main() {
 
 	// Run configuration
 	configureConfig := workflow.ConfigureConfig{
-		WINEPREFIX:  result.WINEPREFIX,
-		ProtonPath:  result.ProtonPath,
-		GPUType:     result.GPUType,
-		IsAMDGPU:    result.IsAMDGPU,
-		Workdir:     workdir,
-		IsFSR41:     *fsr41,
-		WineBinPath: result.WineBinPath,
+		WINEPREFIX:     result.WINEPREFIX,
+		ProtonPath:     result.ProtonPath,
+		GPUType:        result.GPUType,
+		IsAMDGPU:       result.IsAMDGPU,
+		Workdir:        workdir,
+		IsFSR41:        *fsr41,
+		WineBinPath:    result.WineBinPath,
+		EACRuntimePath: result.EACRuntimePath,
 	}
 
 	if err := workflow.RunConfiguration(configureConfig, logger); err != nil {

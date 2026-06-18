@@ -106,26 +106,64 @@ func GetLocalProtonPath(workdir, protonVer string) string {
 
 // GetProtonInstallPath returns the path to the proton install directory
 func GetProtonInstallPath(protonVer string) (string, error) {
-	homeDir, err := os.UserHomeDir()
+	bellumDir, err := config.GetBellumInstallPath()
 	if err != nil {
-		homeDir = os.Getenv("HOME")
+		return "", err
 	}
-	if homeDir == "" {
-		return "", fmt.Errorf("unable to determine home directory")
-	}
-	return filepath.Join(homeDir, ".local", "share", "bellum", "proton", fmt.Sprintf("bellum-%s", protonVer)), nil
+	return filepath.Join(bellumDir, "proton", fmt.Sprintf("bellum-%s", protonVer)), nil
 }
 
 // GetWineInstallPath returns the path to the Wine install directory
 func GetWineInstallPath(wineVer string) (string, error) {
-	homeDir, err := os.UserHomeDir()
+	bellumDir, err := config.GetBellumInstallPath()
 	if err != nil {
-		homeDir = os.Getenv("HOME")
+		return "", err
 	}
-	if homeDir == "" {
-		return "", fmt.Errorf("unable to determine home directory")
+	return filepath.Join(bellumDir, wineVer), nil
+}
+
+// GetEACRuntimeInstallPath returns the path to the EAC Runtime install directory
+func GetEACRuntimeInstallPath() (string, error) {
+	bellumDir, err := config.GetBellumInstallPath()
+	if err != nil {
+		return "", err
 	}
-	return filepath.Join(homeDir, ".local", "share", "bellum", wineVer), nil
+	return filepath.Join(bellumDir, "EAC_Runtime"), nil
+}
+
+// EnsureEACRuntime extracts and installs the EAC Runtime package
+func EnsureEACRuntime(workdir string, logger *core.Logger) error {
+	eacDir, err := GetEACRuntimeInstallPath()
+	if err != nil {
+		return err
+	}
+
+	// Check if EAC Runtime directory already exists
+	if _, err := os.Stat(eacDir); err == nil {
+		logger.Info("EAC Runtime already installed")
+		return nil
+	}
+
+	// Check for EAC Runtime archive
+	archivePath := filepath.Join(workdir, "packages", "EAC_Runtime.tar.gz")
+	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+		logger.Warn(fmt.Sprintf("EAC Runtime archive not found: %s, skipping", archivePath))
+		return nil
+	}
+
+	logger.Info("Installing EAC Runtime...")
+	if err := os.MkdirAll(eacDir, 0755); err != nil {
+		return fmt.Errorf("failed to create EAC Runtime directory: %w", err)
+	}
+
+	// Extract tar.gz (strip one level - the archive root directory)
+	if err := ExtractPackageTo(archivePath, eacDir, 1); err != nil {
+		os.RemoveAll(eacDir)
+		return fmt.Errorf("failed to extract EAC Runtime: %w", err)
+	}
+
+	logger.Info("[OK] EAC Runtime installed")
+	return nil
 }
 
 // GetWineBinPath returns the path to the Wine bin directory

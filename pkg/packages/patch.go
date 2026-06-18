@@ -60,6 +60,7 @@ func PatchProtonSettings(settingsFile string, isAMD bool, isFSR41 bool) error {
 	desired["MALLOC_ARENA_MAX"] = "1"
 	desired["PROTON_VKD3D_HEAP"] = "1"
 	desired["VKD3D_CONFIG"] = "descriptor_heap"
+	desired["PROTON_EAC_RUNTIME"] = "1"
 
 	// AMD-specific settings (FSR4 upgrade)
 	if isAMD {

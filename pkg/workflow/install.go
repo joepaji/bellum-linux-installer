@@ -47,6 +47,7 @@ type InstallConfig struct {
 	WinetricksTmpDir   string
 	UseProtonForAMD    bool
 	WineBinPath        string
+	EACRuntimePath     string
 }
 
 // InstallDXVK installs DXVK using the packaged setup script
@@ -146,6 +147,9 @@ func RunInstaller(config InstallConfig, logger *core.Logger) error {
 	os.Setenv("STEAM_COMPAT_DATA_PATH", config.WINEPREFIX)
 	os.Setenv("STEAM_COMPAT_CLIENT_INSTALL_PATH", filepath.Join(os.Getenv("HOME"), ".steam", "steam"))
 	os.Setenv("GAMEID", "1")
+	if config.EACRuntimePath != "" {
+		os.Setenv("PROTON_EAC_RUNTIME", config.EACRuntimePath)
+	}
 
 	// Validate environment variables are set
 	if err := validateEnvironmentVariables(config.WINEPREFIX, config.ProtonPath); err != nil {
@@ -278,6 +282,7 @@ func GenerateLauncher(config InstallConfig, logger *core.Logger) error {
 		LauncherBinaryPath: config.LauncherBinaryPath,
 		UseProtonForAMD:    config.UseProtonForAMD,
 		WineBinPath:        config.WineBinPath,
+		EACRuntimePath:     config.EACRuntimePath,
 	}
 
 	if err := launchers.GenerateLauncher(launcherConfig, logger); err != nil {

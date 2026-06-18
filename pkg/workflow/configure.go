@@ -11,13 +11,14 @@ import (
 
 // ConfigureConfig holds configuration for post-install configuration
 type ConfigureConfig struct {
-	WINEPREFIX  string
-	ProtonPath  string
-	GPUType     string
-	IsAMDGPU    bool
-	Workdir     string
-	IsFSR41     bool
-	WineBinPath string
+	WINEPREFIX     string
+	ProtonPath     string
+	GPUType        string
+	IsAMDGPU       bool
+	Workdir        string
+	IsFSR41        bool
+	WineBinPath    string
+	EACRuntimePath string
 }
 
 // RunConfiguration runs the post-install configuration phase
@@ -32,7 +33,7 @@ func RunConfiguration(config ConfigureConfig, logger *core.Logger) error {
 
 	// GPU-specific configuration
 	if config.GPUType == "NVIDIA" {
-		if err := launchers.CreateLaunchVarsFileNvidia(config.WINEPREFIX, config.ProtonPath, logger); err != nil {
+		if err := launchers.CreateLaunchVarsFileNvidia(config.WINEPREFIX, config.ProtonPath, config.EACRuntimePath, logger); err != nil {
 			return err
 		}
 		// dxvk_nvapi is included in Proton for NVIDIA
@@ -43,7 +44,7 @@ func RunConfiguration(config ConfigureConfig, logger *core.Logger) error {
 				return err
 			}
 		}
-		if err := launchers.CreateLaunchVarsFileAMD(config.WINEPREFIX, config.ProtonPath, logger); err != nil {
+		if err := launchers.CreateLaunchVarsFileAMD(config.WINEPREFIX, config.ProtonPath, config.EACRuntimePath, logger); err != nil {
 			return err
 		}
 	} else {
