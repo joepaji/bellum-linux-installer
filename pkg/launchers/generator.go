@@ -210,8 +210,8 @@ run_launcher() {
     mv "$UPDATEFILE" "$LAUNCHER_EXE"
     rm -rf $UPDATEFILE
 
-	  "$PROTON_WINESERVER_BIN" "-k"
-	  "$PROTON_BIN" run "$LAUNCHER_EXE" "$@" > "$LOG_FILE" 2>> "$LOG_FILE"
+    "$PROTON_WINESERVER_BIN" "-k"
+    "$PROTON_BIN" run "$LAUNCHER_EXE" "$@" > "$LOG_FILE" 2>> "$LOG_FILE"
   fi
 
   return "$?"

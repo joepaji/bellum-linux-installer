@@ -3,7 +3,7 @@
 
 .PHONY: all build clean release help
 
-VERSION := 2.0.0
+VERSION := 2.1.0
 
 # Go configuration
 GO := go
