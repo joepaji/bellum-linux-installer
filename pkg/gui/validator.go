@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -11,7 +10,7 @@ import (
 )
 
 // ValidateDirectory validates a selected directory for WINEPREFIX usage
-// The WINEPREFIX will be created as <path>/Bellum
+// The WINEPREFIX will be created as <path>/Bellum (or <path> if already named "Bellum")
 // Returns error and error message if validation fails
 func ValidateDirectory(path string, logger *core.Logger) (bool, string) {
 	// Normalize path
@@ -22,110 +21,72 @@ func ValidateDirectory(path string, logger *core.Logger) (bool, string) {
 		return false, "Please select an absolute path (starting with /). Example: /games"
 	}
 
-	// Check if parent directory exists
-	parentDir := filepath.Dir(path)
-	if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-		return false, fmt.Sprintf("The parent directory '%s' does not exist. Please select a directory within an existing location.", parentDir)
-	}
+	// Determine the resolved install path (same logic as ResolveInstallPath)
+	baseName := filepath.Base(path)
+	if strings.EqualFold(baseName, "Bellum") && IsDirEmpty(path) {
+		// User selected an empty "Bellum" directory - validate it directly
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return false, fmt.Sprintf("The directory '%s' does not exist. Please select a directory that exists.", path)
+		}
+		if !core.IsWritable(path) {
+			return false, fmt.Sprintf("You don't have permission to write to the directory '%s'. Please select a directory where you have write access.", path)
+		}
+	} else {
+		// WINEPREFIX will be at path/Bellum
+		bellumPath := filepath.Join(path, "Bellum")
 
-	// Check if parent directory is writable
-	if !isWritable(parentDir) {
-		return false, fmt.Sprintf("You don't have permission to write to the parent directory '%s'. Please select a directory where you have write access.", parentDir)
-	}
+		// Check if the selected path exists and is writable (parent of Bellum subdirectory)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return false, fmt.Sprintf("The directory '%s' does not exist. Please select a directory that exists.", path)
+		}
 
-	// The WINEPREFIX will be at path/Bellum
-	bellumPath := filepath.Join(path, "Bellum")
+		if !core.IsWritable(path) {
+			return false, fmt.Sprintf("You don't have permission to write to the directory '%s'. Please select a directory where you have write access.", path)
+		}
 
-	// Check if Bellum directory already exists
-	if isDir(bellumPath) {
-		return false, fmt.Sprintf("A Bellum installation already exists at '%s'. Please uninstall it first before installing again.", bellumPath)
-	}
+		// Check if Bellum directory already exists
+		if core.IsDir(bellumPath) {
+			return false, fmt.Sprintf("A Bellum installation already exists at '%s'. Please uninstall it first before installing again.", bellumPath)
+		}
 
-	// Check if the selected path is a mountpoint - this is now allowed
-	// since we'll create Bellum inside it
-	if isMountpoint(path) {
-		logger.Info(fmt.Sprintf("Selected path '%s' is a mountpoint, which is allowed. The WINEPREFIX will be created at '%s'.", path, bellumPath))
+		// Check if the selected path is a mountpoint - this is now allowed
+		// since we'll create Bellum inside it
+		if core.IsMountpoint(path) {
+			logger.Info(fmt.Sprintf("Selected path '%s' is a mountpoint, which is allowed. The WINEPREFIX will be created at '%s'.", path, bellumPath))
+		}
 	}
 
 	// All checks passed
 	return true, ""
 }
 
-// isMountpoint checks if a path is a mountpoint
-// Uses the findmnt command to determine if the path is a mountpoint
-func isMountpoint(path string) bool {
-	// Use findmnt to check if path is a mountpoint
-	cmd := exec.Command("findmnt", "-n", "-o", "TARGET", "-T", path)
-	output, err := cmd.Output()
-	if err != nil {
-		// findmnt may not be available, fallback to other methods
-		return isMountpointFallback(path)
-	}
 
-	// If findmnt returns the path itself, it's a mountpoint
-	mountTarget := strings.TrimSpace(string(output))
-	return mountTarget == path
-}
 
-// isMountpointFallback is a fallback method to check if a path is a mountpoint
-func isMountpointFallback(path string) bool {
-	// Try stat to get device info
-	cmd := exec.Command("stat", "-c", "%d:%u", path)
-	output, err := cmd.Output()
+
+
+// IsDirEmpty checks if a directory is empty (has no files or subdirectories)
+func IsDirEmpty(path string) bool {
+	entries, err := os.ReadDir(path)
 	if err != nil {
 		return false
 	}
-
-	devIno := strings.TrimSpace(string(output))
-
-	// Check parent directories to see if we're at a mount boundary
-	current := path
-	for current != "/" && current != "." {
-		parent := filepath.Dir(current)
-
-		// Get parent device info
-		cmd := exec.Command("stat", "-c", "%d:%u", parent)
-		parentOutput, err := cmd.Output()
-		if err != nil {
-			break
-		}
-
-		parentDevIno := strings.TrimSpace(string(parentOutput))
-
-		// If device numbers differ, we're at a mountpoint
-		// Extract just the device number (first part before :)
-		devNum := strings.Split(devIno, ":")[0]
-		parentDevNum := strings.Split(parentDevIno, ":")[0]
-
-		if devNum != parentDevNum {
-			return true
-		}
-
-		current = parent
-	}
-
-	return false
+	return len(entries) == 0
 }
 
-// isDir checks if a path is a directory
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
-}
+// ResolveInstallPath determines the final install path from a user-selected directory.
+// If the selected path is already named "Bellum" and is empty, it uses the path directly.
+// Otherwise, it appends "Bellum" to the selected path.
+func ResolveInstallPath(selectedPath string) string {
+	selectedPath = strings.TrimSuffix(selectedPath, "/")
+	baseName := filepath.Base(selectedPath)
 
-// isWritable checks if a path is writable
-func isWritable(path string) bool {
-	testFile := filepath.Join(path, ".write_test_"+fmt.Sprintf("%d", os.Getpid()))
-	file, err := os.Create(testFile)
-	if err != nil {
-		return false
+	// If user selected a directory already named "Bellum" and it's empty, use it directly
+	if strings.EqualFold(baseName, "Bellum") && IsDirEmpty(selectedPath) {
+		return selectedPath
 	}
-	file.Close()
-	os.Remove(testFile)
-	return true
+
+	// Otherwise, create/use a Bellum subdirectory
+	return filepath.Join(selectedPath, "Bellum")
 }
 
 // min returns the minimum of two integers

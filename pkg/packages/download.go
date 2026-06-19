@@ -54,14 +54,12 @@ func DownloadLauncherInstaller(workdir string, logger *core.Logger) (*LauncherIn
 	if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
-	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, launcherInstallerURL}, logger, logFile); err != nil {
-		logger.Error("Failed to download launcher installer")
-		return nil, fmt.Errorf("failed to download launcher installer: %w", err)
+	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, launcherInstallerURL}, logger, logFile, nil, nil); err != nil {
+		return nil, core.LogAndReturn(fmt.Errorf("failed to download launcher installer: %w", err), core.ErrorLevelCritical, logger)
 	}
 
 	if _, err := os.Stat(dest); os.IsNotExist(err) {
-		logger.Error("Download verification failed: launcher installer not found")
-		return nil, fmt.Errorf("download verification failed: launcher installer not found")
+		return nil, core.LogAndReturn(fmt.Errorf("download verification failed: launcher installer not found"), core.ErrorLevelCritical, logger)
 	}
 
 	return &LauncherInstallerState{
@@ -84,7 +82,7 @@ func CleanupLauncherInstaller(state *LauncherInstallerState, logger *core.Logger
 	}
 
 	if state.DownloadDir != "" {
-		if err := os.Remove(state.DownloadDir); err != nil && !os.IsNotExist(err) {
+		if err := os.RemoveAll(state.DownloadDir); err != nil && !os.IsNotExist(err) {
 			logger.Warn(fmt.Sprintf("Failed to remove launcher installer directory: %v (directory not empty or does not exist)", err))
 		}
 	}
@@ -107,12 +105,147 @@ func GetLocalProtonPath(workdir, protonVer string) string {
 }
 
 // GetProtonInstallPath returns the path to the proton install directory
-func GetProtonInstallPath(protonVer string) string {
-	homeDir, err := os.UserHomeDir()
+func GetProtonInstallPath(protonVer string) (string, error) {
+	bellumDir, err := config.GetBellumInstallPath()
 	if err != nil {
-		homeDir = os.Getenv("HOME")
+		return "", err
 	}
-	return filepath.Join(homeDir, ".local", "share", "bellum", "proton", fmt.Sprintf("bellum-%s", protonVer))
+	return filepath.Join(bellumDir, "proton", fmt.Sprintf("bellum-%s", protonVer)), nil
+}
+
+// GetWineInstallPath returns the path to the Wine install directory
+func GetWineInstallPath(wineVer string) (string, error) {
+	bellumDir, err := config.GetBellumInstallPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(bellumDir, wineVer), nil
+}
+
+// GetEACRuntimeInstallPath returns the path to the EAC Runtime install directory
+func GetEACRuntimeInstallPath() (string, error) {
+	bellumDir, err := config.GetBellumInstallPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(bellumDir, "EAC_Runtime"), nil
+}
+
+// EnsureEACRuntime extracts and installs the EAC Runtime package
+func EnsureEACRuntime(workdir string, logger *core.Logger) error {
+	eacDir, err := GetEACRuntimeInstallPath()
+	if err != nil {
+		return err
+	}
+
+	// Check if EAC Runtime directory already exists
+	if _, err := os.Stat(eacDir); err == nil {
+		logger.Info("EAC Runtime already installed")
+		return nil
+	}
+
+	// Check for EAC Runtime archive
+	archivePath := filepath.Join(workdir, "packages", "EAC_Runtime.tar.gz")
+	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+		logger.Warn(fmt.Sprintf("EAC Runtime archive not found: %s, skipping", archivePath))
+		return nil
+	}
+
+	logger.Info("Installing EAC Runtime...")
+	if err := os.MkdirAll(eacDir, 0755); err != nil {
+		return fmt.Errorf("failed to create EAC Runtime directory: %w", err)
+	}
+
+	// Extract tar.gz (strip one level - the archive root directory)
+	if err := ExtractPackageTo(archivePath, eacDir, 1); err != nil {
+		os.RemoveAll(eacDir)
+		return fmt.Errorf("failed to extract EAC Runtime: %w", err)
+	}
+
+	logger.Info("[OK] EAC Runtime installed")
+	return nil
+}
+
+// GetWineBinPath returns the path to the Wine bin directory
+func GetWineBinPath(wineDir string) string {
+	return filepath.Join(wineDir, "bin")
+}
+
+// GetWineURL returns the download URL for Wine based on the version
+func GetWineURL(wineVer string) string {
+	// Use the full version string directly (e.g., "bellum-wine-11.8.tar.gz")
+	return fmt.Sprintf("https://github.com/joepaji/bellum-linux-installer/releases/download/winepkg/%s.tar.gz", wineVer)
+}
+
+// EnsureWine downloads and sets up the Wine directory
+func EnsureWine(wineVer string, logger *core.Logger) (string, error) {
+	wineURL := GetWineURL(wineVer)
+
+	// Get the actual wine install path
+	wineDir, err := GetWineInstallPath(wineVer)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if wine directory exists
+	dirExists := true
+	if _, err := os.Stat(wineDir); os.IsNotExist(err) {
+		dirExists = false
+	}
+
+	if !dirExists {
+		archivePath := ""
+		tmpDir := ""
+
+		// Check for WINE_PKG_OVERRIDE env var (dev/debug only, not exposed to end users)
+		overridePath := os.Getenv("WINE_PKG_OVERRIDE")
+		if overridePath != "" {
+			logger.Info(fmt.Sprintf("Using Wine package from WINE_PKG_OVERRIDE: %s", overridePath))
+			if _, err := os.Stat(overridePath); os.IsNotExist(err) {
+				return "", fmt.Errorf("Wine package override file not found: %s", overridePath)
+			}
+			archivePath = overridePath
+		} else {
+			logger.Info("Wine directory not found, downloading...")
+			logger.Info("This can take a few minutes...")
+			tmpDir, err = os.MkdirTemp("", "wine.")
+			if err != nil {
+				return "", fmt.Errorf("failed to create temp directory for Wine download: %w", err)
+			}
+			defer os.RemoveAll(tmpDir)
+
+			archivePath = filepath.Join(tmpDir, fmt.Sprintf("%s.tar.gz", wineVer))
+			if err := downloadFile(archivePath, wineURL, logger); err != nil {
+				return "", err
+			}
+		}
+
+		if archivePath != "" {
+			if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+				return "", fmt.Errorf("archive file not found: %s", archivePath)
+			}
+
+			logger.Info(fmt.Sprintf("Extracting Wine to %s...", wineDir))
+			if err := os.MkdirAll(wineDir, 0755); err != nil {
+				return "", fmt.Errorf("failed to create Wine directory: %w", err)
+			}
+
+			// Extract tar.gz (strip one level - the archive root directory)
+			if err := ExtractPackageTo(archivePath, wineDir, 1); err != nil {
+				os.RemoveAll(wineDir)
+				return "", fmt.Errorf("failed to extract Wine: %w", err)
+			}
+
+			// Only remove the archive if it was downloaded (not from override)
+			if overridePath == "" {
+				if err := os.Remove(archivePath); err != nil {
+					logger.Warn(fmt.Sprintf("Failed to remove Wine archive: %v", err))
+				}
+			}
+		}
+	}
+
+	return wineDir, nil
 }
 
 // EnsureProton downloads and sets up the Proton directory
@@ -121,14 +254,15 @@ func EnsureProton(protonDir, protonVer string, isAMD bool, isFSR41 bool, logger 
 	protonURL := GetProtonURL(protonVer, config.DefaultVersions.ProtonBaseURL)
 
 	// Use the dedicated proton install directory
-	actualProtonDir := GetProtonInstallPath(protonVer)
+	actualProtonDir, err := GetProtonInstallPath(protonVer)
+	if err != nil {
+		return err
+	}
 
 	// Check if proton directory exists
-	dirExists := false
+	dirExists := true
 	if _, err := os.Stat(actualProtonDir); os.IsNotExist(err) {
 		dirExists = false
-	} else {
-		dirExists = true
 	}
 
 	// Check for user_settings.py
@@ -178,8 +312,8 @@ func EnsureProton(protonDir, protonVer string, isAMD bool, isFSR41 bool, logger 
 		}
 
 		logger.Info(fmt.Sprintf("Downloading Proton %s...", protonVer))
-
-		tmpDir, err := os.MkdirTemp("", "proton.XXXXXX")
+		logger.Info("This can take a few minutes...")
+		tmpDir, err := os.MkdirTemp("", "proton.")
 		if err != nil {
 			return fmt.Errorf("failed to create temp directory for Proton download: %w", err)
 		}
@@ -210,15 +344,13 @@ func EnsureProton(protonDir, protonVer string, isAMD bool, isFSR41 bool, logger 
 	// Check for user_settings.py
 	settingsFile = GetProtonUserSettingsPath(actualProtonDir)
 	if settingsFile == "" {
-		logger.Error("Proton user settings file missing after setup")
-		return fmt.Errorf("Proton user settings file missing: %s", settingsFile)
+		return core.LogAndReturn(fmt.Errorf("Proton user settings file missing: %s", settingsFile), core.ErrorLevelCritical, logger)
 	}
 
 	// Patch settings
 	if err := PatchProtonSettings(settingsFile, isAMD, isFSR41); err != nil {
-		logger.Error("Failed to patch Proton user settings, removing and re-downloading Proton")
 		os.RemoveAll(actualProtonDir)
-		return fmt.Errorf("failed to patch Proton user settings: %w", err)
+		return core.LogAndReturn(fmt.Errorf("failed to patch Proton user settings: %w", err), core.ErrorLevelCritical, logger)
 	}
 
 	return nil
@@ -258,9 +390,8 @@ func downloadFile(dest, url string, logger *core.Logger) error {
 	if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
-	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, url}, logger, logFile); err != nil {
-		logger.Error(fmt.Sprintf("Failed to download %s", url))
-		return fmt.Errorf("failed to download %s: %w", url, err)
+	if err := core.RunCommand(core.RunModeSilent, []string{"wget", "-O", dest, url}, logger, logFile, nil, nil); err != nil {
+		return core.LogAndReturn(fmt.Errorf("failed to download %s: %w", url, err), core.ErrorLevelCritical, logger)
 	}
 
 	if _, err := os.Stat(dest); os.IsNotExist(err) {

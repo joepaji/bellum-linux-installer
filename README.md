@@ -15,8 +15,8 @@ That said, my goal is making sure none of my fellow linux gamers have to see the
 3. Extract the release tarball & access extracted directory:
 
 ```bash
-tar -xzf bellum-installer-linux-amd64-v2.0.0.tar.gz 
-cd bellum-installer-linux-amd64-v2.0.0
+tar -xzf bellum-installer-linux-amd64-v2.1.0.tar.gz 
+cd bellum-installer-linux-amd64-v2.1.0
 ```
 
 ### Install Game
@@ -54,10 +54,10 @@ If you want the leaked FSR 4.1.0 level, use the **--fsr41** flag
 <img width="800" alt="image" src="https://github.com/user-attachments/assets/aab9f336-9307-4e2a-b7da-f5f8655eb92b" />
 
 
-**Note:** `WINEPREFIX` environment variable can also be used to install Bellum:
+**Note:** `INSTALL_DIR` environment variable can also be used to install Bellum:
 
 ```bash
-export WINEPREFIX=/path/to/wineprefix
+export INSTALL_DIR=/path/to/install-location
 ./installer
 ```
 
@@ -80,18 +80,18 @@ Just open a terminal anywhere, and run the `Bellum` command.
 
 ## Uninstallation
 
-Set the `WINEPREFIX` env var to the one used to install the game. Then run unintsaller script.
+Set the `INSTALL_DIR` env var to the one used to install the game. Then run unintsaller script.
 ```bash
-export WINEPREFIX=/path/to/wineprefix
+export INSTALL_DIR=/path/to/install-location
 ./uninstaller
 ```
 
 ## Release Tarball Structure
 
-The release tarball (`bellum-installer-linux-amd64-v2.0.0.tar.gz`) contains:
+The release tarball (`bellum-installer-linux-amd64-v2.1.0.tar.gz`) contains:
 
 ```
-bellum-installer-linux-amd64-v2.0.0.tar.gz
+bellum-installer-linux-amd64-v2.1.0.tar.gz
 ├── installer          # Installer binary
 ├── uninstaller        # Uninstaller binary
 └── packages/          # All bundled packages

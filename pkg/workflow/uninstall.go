@@ -2,9 +2,9 @@ package workflow
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"bellum-installer/pkg/config"
 	"bellum-installer/pkg/core"
@@ -27,12 +27,11 @@ func RunUninstallation(config UninstallConfig, logger *core.Logger) error {
 
 	// Validate WINEPREFIX
 	if config.WINEPREFIX == "" {
-		logger.Error("WINEPREFIX is required. Use --wineprefix <path> or set WINEPREFIX environment variable.")
-		return fmt.Errorf("WINEPREFIX is required")
+		return core.LogAndReturn(fmt.Errorf("WINEPREFIX is required. Use --wineprefix <path> or --install-dir <path>, or set WINEPREFIX/INSTALL_DIR environment variable."), core.ErrorLevelCritical, logger)
 	}
 
 	// Check if WINEPREFIX exists
-	wineprefixExists := isDir(config.WINEPREFIX)
+	wineprefixExists := core.IsDir(config.WINEPREFIX)
 	if !wineprefixExists {
 		logger.Warn(fmt.Sprintf("WINEPREFIX directory not found: %s", core.Colorize(config.WINEPREFIX, core.ColorBoldYellow)))
 	}
@@ -70,6 +69,16 @@ func RunUninstallation(config UninstallConfig, logger *core.Logger) error {
 		return err
 	}
 
+	// Remove Wine package
+	if err := removeWinePackage(logger); err != nil {
+		return err
+	}
+
+	// Remove EAC Runtime
+	if err := removeEACRuntime(logger); err != nil {
+		return err
+	}
+
 	// Remove WINEPREFIX if it exists
 	if wineprefixExists {
 		if err := removeWINEPREFIX(config.WINEPREFIX, logger); err != nil {
@@ -86,18 +95,35 @@ func RunUninstallation(config UninstallConfig, logger *core.Logger) error {
 }
 
 // removeLauncherBinaries removes the launcher wrapper script.
+// If writing to the launcher bin directory and not running as root, it uses pkexec to elevate privileges.
 func removeLauncherBinaries(gpuType string, logger *core.Logger) error {
 	logger.Info("Removing launcher binaries...")
 
-	bellumPath := "/usr/local/bin/Bellum"
+	bellumPath := config.LauncherBinaryPath
 	if _, err := os.Stat(bellumPath); err == nil {
 		if err := os.Remove(bellumPath); err != nil {
-			logger.Warn(fmt.Sprintf("Failed to remove %s: %v", bellumPath, err))
-		} else {
-			logger.Info(fmt.Sprintf("[OK] Removed %s", bellumPath))
+			// If permission denied and path is under /usr/local/bin, try with pkexec
+			if os.IsPermission(err) && strings.HasPrefix(bellumPath, config.LauncherBinDir+"/") {
+				if removeWithSudo(bellumPath, logger) != nil {
+					return fmt.Errorf("failed to remove %s: %w", bellumPath, err)
+				}
+				logger.Info(fmt.Sprintf("[OK] Removed %s", bellumPath))
+				return nil
+			}
+			return fmt.Errorf("failed to remove %s: %w", bellumPath, err)
 		}
+		logger.Info(fmt.Sprintf("[OK] Removed %s", bellumPath))
 	}
 
+	return nil
+}
+
+// removeWithSudo uses pkexec to remove a file with elevated privileges.
+func removeWithSudo(path string, logger *core.Logger) error {
+	cmd := []string{"pkexec", "rm", path}
+	if err := core.RunCommand(core.RunModeSilent, cmd, logger, "", nil, nil); err != nil {
+		return fmt.Errorf("failed to remove %s with pkexec: %w", path, err)
+	}
 	return nil
 }
 
@@ -105,9 +131,10 @@ func removeLauncherBinaries(gpuType string, logger *core.Logger) error {
 func removeDesktopEntries(gpuType string, logger *core.Logger) error {
 	logger.Info("Removing desktop entries...")
 
-	userAppsDir := filepath.Join(os.Getenv("HOME"), ".local", "share", "applications")
+	homeDir := os.Getenv("HOME")
+	paths := config.GetLauncherPaths("", homeDir)
 
-	desktopPath := filepath.Join(userAppsDir, "Bellum.desktop")
+	desktopPath := paths.DesktopPath
 	if _, err := os.Stat(desktopPath); err == nil {
 		if err := os.Remove(desktopPath); err != nil {
 			logger.Warn(fmt.Sprintf("Failed to remove %s: %v", desktopPath, err))
@@ -116,8 +143,7 @@ func removeDesktopEntries(gpuType string, logger *core.Logger) error {
 		}
 	}
 
-	homeDir := os.Getenv("HOME")
-	desktopDest := filepath.Join(homeDir, "Desktop", "Bellum.desktop")
+	desktopDest := config.DesktopLauncherPath(homeDir)
 	if _, err := os.Stat(desktopDest); err == nil {
 		if err := os.Remove(desktopDest); err != nil {
 			logger.Warn(fmt.Sprintf("Failed to remove %s: %v", desktopDest, err))
@@ -126,8 +152,9 @@ func removeDesktopEntries(gpuType string, logger *core.Logger) error {
 		}
 	}
 
+	userAppsDir := filepath.Join(homeDir, config.UserApplicationsDir)
 	if _, err := os.Stat(userAppsDir); err == nil {
-		core.RunCommand(core.RunModeSilent, []string{"update-desktop-database", userAppsDir}, logger, "")
+		core.RunCommand(core.RunModeSilent, []string{"update-desktop-database", userAppsDir}, logger, "", nil, nil)
 	}
 
 	return nil
@@ -138,7 +165,8 @@ func removeIcon(logger *core.Logger) error {
 	logger.Info("Removing launcher icon...")
 
 	homeDir := os.Getenv("HOME")
-	iconPath := filepath.Join(homeDir, ".local", "share", "icons", "hicolor", "256x256", "apps", "bellum.png")
+	paths := config.GetLauncherPaths("", homeDir)
+	iconPath := paths.IconPath
 	if _, err := os.Stat(iconPath); err == nil {
 		if err := os.Remove(iconPath); err != nil {
 			logger.Warn(fmt.Sprintf("Failed to remove %s: %v", iconPath, err))
@@ -158,47 +186,94 @@ func removeProton(wineprefix string, gpuType string, logger *core.Logger) error 
 	protonVer := config.DefaultVersions.ProtonVer
 
 	// Get the proton install path (even if wineprefix doesn't exist)
-	protonPath := packages.GetProtonInstallPath(protonVer)
+	protonPath, err := packages.GetProtonInstallPath(protonVer)
+	if err != nil {
+		logger.Warn(fmt.Sprintf("Failed to get proton install path: %v", err))
+		return nil
+	}
 	if _, err := os.Stat(protonPath); err == nil {
 		logger.Info(fmt.Sprintf("Removing Proton directory: %s", protonPath))
 		if err := os.RemoveAll(protonPath); err != nil {
-			logger.Warn(fmt.Sprintf("Failed to remove Proton directory %s: %v", protonPath, err))
-		} else {
-			logger.Info("[OK] Removed Bellum Proton directory")
+			return fmt.Errorf("failed to remove Proton directory %s: %w", protonPath, err)
 		}
+		logger.Info("[OK] Removed Bellum Proton directory")
 	}
 
 	// Check if the parent proton directory is now empty and remove it silently
 	protonParentDir := filepath.Join(filepath.Dir(protonPath))
-	if isEmptyDir(protonParentDir) {
+	if core.IsEmptyDir(protonParentDir) {
 		os.RemoveAll(protonParentDir)
 	}
 
 	// Check if the bellum directory is now empty and remove it silently
 	bellumDir := filepath.Join(filepath.Dir(filepath.Dir(protonParentDir)))
-	if isEmptyDir(bellumDir) {
+	if core.IsEmptyDir(bellumDir) {
 		os.RemoveAll(bellumDir)
 	}
 
 	return nil
 }
 
-// isEmptyDir checks if a directory is empty
-func isEmptyDir(path string) bool {
-	file, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
+// removeWinePackage removes the packaged Wine directory
+func removeWinePackage(logger *core.Logger) error {
+	logger.Info("Removing Wine package...")
 
-	_, err = file.Readdirnames(1)
-	return err == io.EOF
+	wineVer := config.DefaultVersions.WineVer
+	wineDir, err := packages.GetWineInstallPath(wineVer)
+	if err != nil {
+		logger.Warn(fmt.Sprintf("Failed to get Wine install path: %v", err))
+		return nil
+	}
+
+	if _, err := os.Stat(wineDir); err == nil {
+		logger.Info(fmt.Sprintf("Removing Wine directory: %s", wineDir))
+		if err := os.RemoveAll(wineDir); err != nil {
+			return fmt.Errorf("failed to remove Wine directory %s: %w", wineDir, err)
+		}
+		logger.Info("[OK] Removed Wine directory")
+	}
+
+	// Check if the bellum directory is now empty and remove it silently
+	bellumDir := filepath.Join(filepath.Dir(wineDir))
+	if core.IsEmptyDir(bellumDir) {
+		os.RemoveAll(bellumDir)
+	}
+
+	return nil
+}
+
+// removeEACRuntime removes the EAC Runtime directory
+func removeEACRuntime(logger *core.Logger) error {
+	logger.Info("Removing EAC Runtime...")
+
+	eacDir, err := packages.GetEACRuntimeInstallPath()
+	if err != nil {
+		logger.Warn(fmt.Sprintf("Failed to get EAC Runtime install path: %v", err))
+		return nil
+	}
+
+	if _, err := os.Stat(eacDir); err == nil {
+		logger.Info(fmt.Sprintf("Removing EAC Runtime directory: %s", eacDir))
+		if err := os.RemoveAll(eacDir); err != nil {
+			return fmt.Errorf("failed to remove EAC Runtime directory %s: %w", eacDir, err)
+		}
+		logger.Info("[OK] Removed EAC Runtime directory")
+	}
+
+	// Check if the bellum directory is now empty and remove it silently
+	bellumDir, err := config.GetBellumInstallPath()
+	if err == nil {
+		if core.IsEmptyDir(bellumDir) {
+			os.RemoveAll(bellumDir)
+		}
+	}
+
+	return nil
 }
 
 // removeWINEPREFIX removes the WINEPREFIX directory with user confirmation
 func removeWINEPREFIX(wineprefix string, logger *core.Logger) error {
 	if err := os.RemoveAll(wineprefix); err != nil {
-		logger.Error(fmt.Sprintf("Failed to remove WINEPREFIX: %v", err))
 		return err
 	}
 
@@ -232,7 +307,7 @@ func ValidateWINEPREFIXWithGUIForUninstall(logger *core.Logger) (string, error) 
 	fmt.Println()
 
 	// Validate the WINEPREFIX exists
-	if !isDir(selectedPath) {
+	if !core.IsDir(selectedPath) {
 		return "", fmt.Errorf("selected directory does not exist: %s", selectedPath)
 	}
 

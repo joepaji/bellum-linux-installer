@@ -16,7 +16,8 @@ func main() {
 	printUninstallerBanner()
 
 	// Parse command line arguments
-	wineprefix := flag.String("wineprefix", "", "Path to WINEPREFIX directory (optional if WINEPREFIX env var is set)")
+	installDir := flag.String("install-dir", "", "Path to installation directory (optional if INSTALL_DIR env var is set). WINEPREFIX will be set to the same value as INSTALL_DIR")
+	wineprefix := flag.String("wineprefix", "", "Path to WINEPREFIX directory (legacy, optional if WINEPREFIX env var is set)")
 	help := flag.Bool("help", false, "Show help message")
 
 	flag.Parse()
@@ -27,10 +28,12 @@ func main() {
 		fmt.Println("Usage: bellum-uninstaller [options]")
 		fmt.Println()
 		fmt.Println("Options:")
-		fmt.Println("  --wineprefix PATH  Path to WINEPREFIX directory (optional if WINEPREFIX env var is set)")
-		fmt.Println("  --help             Show this help message")
+		fmt.Println("  --install-dir PATH   Path to installation directory (optional if INSTALL_DIR env var is set). WINEPREFIX will be set to the same value as INSTALL_DIR")
+		fmt.Println("  --wineprefix PATH    Path to WINEPREFIX directory (legacy, optional if WINEPREFIX env var is set)")
+		fmt.Println("  --help               Show this help message")
 		fmt.Println()
 		fmt.Println("Examples:")
+		fmt.Println("  bellum-uninstaller --install-dir /path/to/install")
 		fmt.Println("  bellum-uninstaller --wineprefix /path/to/wineprefix")
 		os.Exit(0)
 	}
@@ -59,9 +62,14 @@ func main() {
 	fmt.Println()
 
 	// Resolve WINEPREFIX from env var or GUI picker if not provided via flag
+	// Priority: --wineprefix flag > --install-dir flag > WINEPREFIX env > INSTALL_DIR env > GUI picker
 	if *wineprefix == "" {
-		if envPrefix := os.Getenv("WINEPREFIX"); envPrefix != "" {
+		if *installDir != "" {
+			*wineprefix = *installDir
+		} else if envPrefix := os.Getenv("WINEPREFIX"); envPrefix != "" {
 			*wineprefix = envPrefix
+		} else if envDir := os.Getenv("INSTALL_DIR"); envDir != "" {
+			*wineprefix = envDir
 		} else {
 			// Use GUI-based WINEPREFIX selection
 			selectedWINEPREFIX, err := workflow.ValidateWINEPREFIXWithGUIForUninstall(logger)
@@ -75,7 +83,7 @@ func main() {
 
 	// Validate WINEPREFIX (should already be set from env var if not provided via flag)
 	if *wineprefix == "" {
-		logger.Error("WINEPREFIX is required. Use --wineprefix <path> or set WINEPREFIX environment variable.")
+		logger.Error("WINEPREFIX is required. Use --wineprefix <path> or --install-dir <path>, or set WINEPREFIX/INSTALL_DIR environment variable.")
 		os.Exit(1)
 	}
 

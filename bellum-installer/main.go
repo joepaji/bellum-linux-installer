@@ -19,9 +19,10 @@ func main() {
 
 	// Parse command line arguments
 	forceWineVersion := flag.Bool("force-wine-version", false, "Force Wine version check")
-	wineprefix := flag.String("wineprefix", "", "Path to WINEPREFIX directory (optional if WINEPREFIX env var is set)")
+	installDir := flag.String("install-dir", "", "Path to installation directory (optional if INSTALL_DIR env var is set). WINEPREFIX will be set to the same value as INSTALL_DIR")
 	launcherInstaller := flag.String("launcher-installer", "", "Path to launcher installer executable")
 	fsr41 := flag.Bool("fsr41", false, "Use FSR 4.1 upgrade path")
+	useProtonForAMD := flag.Bool("proton", false, "Use Proton launch approach for AMD GPUs (same as NVIDIA)")
 	help := flag.Bool("help", false, "Show help message")
 
 	flag.Parse()
@@ -33,14 +34,15 @@ func main() {
 		fmt.Println()
 		fmt.Println("Options:")
 		fmt.Println("  --force-wine-version  Force Wine version check (not recommended)")
-		fmt.Println("  --wineprefix PATH     Path to WINEPREFIX directory (optional if WINEPREFIX env var is set)")
+		fmt.Println("  --install-dir PATH    Path to installation directory (optional if INSTALL_DIR env var is set). WINEPREFIX will be set to the same value as INSTALL_DIR")
 		fmt.Println("  --launcher-installer PATH  Path to launcher installer executable")
 		fmt.Println("  --fsr41               Use FSR 4.1 upgrade path")
+		fmt.Println("  --proton              Use Proton launch approach for AMD GPUs (same as NVIDIA)")
 		fmt.Println("  --help                Show this help message")
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bellum-installer --wineprefix /path/to/wineprefix")
-		fmt.Println("  bellum-installer --wineprefix /path/to/wineprefix --launcher-installer /path/to/launcher.exe")
+		fmt.Println("  bellum-installer --install-dir /path/to/install")
+		fmt.Println("  bellum-installer --install-dir /path/to/install --launcher-installer /path/to/launcher.exe")
 		os.Exit(0)
 	}
 
@@ -66,35 +68,42 @@ func main() {
 
 	logger.Info("Bellum Linux Installer")
 
-	// Determine WINEPREFIX
-	var selectedWINEPREFIX string
-	if *wineprefix != "" {
-		selectedWINEPREFIX = *wineprefix
-		logger.Info(fmt.Sprintf("WINEPREFIX from flag: %s", core.Colorize(selectedWINEPREFIX, core.ColorBoldYellow)))
+	// Determine INSTALL_DIR (user-facing path)
+	var selectedInstallDir string
+	if *installDir != "" {
+		selectedInstallDir = *installDir
+		logger.Info(fmt.Sprintf("INSTALL_DIR from flag: %s", core.Colorize(selectedInstallDir, core.ColorBoldYellow)))
+	} else if envDir := os.Getenv("INSTALL_DIR"); envDir != "" {
+		selectedInstallDir = envDir
+		logger.Info(fmt.Sprintf("INSTALL_DIR from environment: %s", core.Colorize(selectedInstallDir, core.ColorBoldYellow)))
 	} else if envPrefix := os.Getenv("WINEPREFIX"); envPrefix != "" {
-		selectedWINEPREFIX = envPrefix
-		logger.Info(fmt.Sprintf("WINEPREFIX from environment: %s", core.Colorize(selectedWINEPREFIX, core.ColorBoldYellow)))
+		// Backward compatibility: if WINEPREFIX is set, derive INSTALL_DIR from it
+		selectedInstallDir = envPrefix
+		logger.Info(fmt.Sprintf("WINEPREFIX environment variable found (legacy), using as INSTALL_DIR: %s", core.Colorize(selectedInstallDir, core.ColorBoldYellow)))
 	} else {
-		// Use GUI-based WINEPREFIX selection
-		selectedWINEPREFIX, err = workflow.ValidateWINEPREFIXWithGUI(logger)
+		// Use GUI-based directory selection
+		selectedInstallDir, err = workflow.SelectInstallDir(logger)
 		if err != nil {
-			logger.Error(fmt.Sprintf("WINEPREFIX selection failed: %v", err))
+			logger.Error(fmt.Sprintf("Installation directory selection failed: %v", err))
 			os.Exit(1)
 		}
 	}
 
-	// Resolve WINEPREFIX to absolute path if needed
-	if !filepath.IsAbs(selectedWINEPREFIX) {
-		absWINEPREFIX, err := filepath.Abs(selectedWINEPREFIX)
+	// Resolve INSTALL_DIR to absolute path if needed
+	if !filepath.IsAbs(selectedInstallDir) {
+		absInstallDir, err := filepath.Abs(selectedInstallDir)
 		if err != nil {
-			logger.Error(fmt.Sprintf("Failed to resolve WINEPREFIX to absolute path: %v", err))
+			logger.Error(fmt.Sprintf("Failed to resolve INSTALL_DIR to absolute path: %v", err))
 			os.Exit(1)
 		}
-		selectedWINEPREFIX = absWINEPREFIX
+		selectedInstallDir = absInstallDir
 	}
+
+	// WINEPREFIX is the same as INSTALL_DIR
+	wineprefix := selectedInstallDir
 
 	// Run prechecks with absolute paths
-	result, err := workflow.RunPrechecks(selectedWINEPREFIX, *launcherInstaller, *forceWineVersion, *fsr41, logger)
+	result, err := workflow.RunPrechecks(wineprefix, *launcherInstaller, *forceWineVersion, *fsr41, logger)
 	if err != nil {
 		logger.Error(fmt.Sprintf("Prechecks failed: %v", err))
 		os.Exit(1)
@@ -114,20 +123,26 @@ func main() {
 	)
 
 	// Confirm with user before proceeding
-	if !core.ConfirmProceed() {
+	if !core.AskBool("Do you want to proceed with the installation? (Y/n): ") {
 		fmt.Println("Installation cancelled.")
 		os.Exit(0)
 	}
 
 	// Create InstallConfig
 	installConfig := workflow.InstallConfig{
-		WINEPREFIX:        result.WINEPREFIX,
-		ProtonPath:        result.ProtonPath,
-		GPUType:           result.GPUType,
-		IsAMDGPU:          result.IsAMDGPU,
-		LauncherInstaller: result.LauncherInstaller,
-		Workdir:           workdir,
-		IsFSR41:           *fsr41,
+		InstallDir:         selectedInstallDir,
+		WINEPREFIX:         result.WINEPREFIX,
+		ProtonPath:         result.ProtonPath,
+		GPUType:            result.GPUType,
+		IsAMDGPU:           result.IsAMDGPU,
+		LauncherInstaller:  result.LauncherInstaller,
+		Workdir:            workdir,
+		IsFSR41:            *fsr41,
+		LauncherBinaryPath: config.LauncherBinaryPath,
+		WinetricksPath:     result.WinetricksPath,
+		UseProtonForAMD:    *useProtonForAMD,
+		WineBinPath:        result.WineBinPath,
+		EACRuntimePath:     result.EACRuntimePath,
 	}
 
 	// Run FSR4.1 upgrade DLL copy before installation if --fsr41 flag is passed
@@ -139,6 +154,12 @@ func main() {
 		}
 	}
 
+	// Scope wine: prepend packaged wine bin to PATH and update LD_LIBRARY_PATH
+	// so all wine commands during the installer lifecycle use the packaged version.
+	scoped := core.NewScopedWine(result.WineBinPath)
+	scoped.Apply()
+	defer scoped.Restore()
+
 	// Run installation
 	logger.Info("Starting installation phase...")
 	if err := workflow.RunInstaller(installConfig, logger); err != nil {
@@ -148,12 +169,15 @@ func main() {
 
 	// Run configuration
 	configureConfig := workflow.ConfigureConfig{
-		WINEPREFIX: result.WINEPREFIX,
-		ProtonPath: result.ProtonPath,
-		GPUType:    result.GPUType,
-		IsAMDGPU:   result.IsAMDGPU,
-		Workdir:    workdir,
-		IsFSR41:    *fsr41,
+		InstallDir:     selectedInstallDir,
+		WINEPREFIX:     result.WINEPREFIX,
+		ProtonPath:     result.ProtonPath,
+		GPUType:        result.GPUType,
+		IsAMDGPU:       result.IsAMDGPU,
+		Workdir:        workdir,
+		IsFSR41:        *fsr41,
+		WineBinPath:    result.WineBinPath,
+		EACRuntimePath: result.EACRuntimePath,
 	}
 
 	if err := workflow.RunConfiguration(configureConfig, logger); err != nil {
@@ -171,6 +195,7 @@ func main() {
 	fmt.Println(" - Terminal Command: `Bellum`")
 	fmt.Println()
 	fmt.Printf("Launch Environment Variable File: %s/launch_vars.env\n", configureConfig.WINEPREFIX)
+	fmt.Printf("Installation directory: %s\n", configureConfig.InstallDir)
 	fmt.Println()
 }
 
@@ -223,7 +248,7 @@ func copyFSR41UpgradeDLL(workdir string, logger *core.Logger) error {
 func printInstallerBanner() {
 	banner := `=======================================================================================
 |                     Linux Wine-Proton Installer for Bellum                          |
-======================================================================================`
+=======================================================================================`
 	fmt.Printf("%s%s%s\n", core.ColorBoldBlue, banner, core.ColorReset)
 	fmt.Println()
 }
